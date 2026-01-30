@@ -1,4 +1,8 @@
 # Dynamic Pathing, Asset management, and COA Plans for Multidisciplinary United States Air Force Operations 
+## Project Description
+
+- A simulation-based research project focused on autonomous and operator-assisted multi-agent path planning in dynamic environments.
+- Initial mission scenarios include search and rescue and disaster response.
 
 ## Major Technologies to be Used:
 
