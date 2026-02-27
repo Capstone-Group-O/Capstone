@@ -7,16 +7,34 @@ class Grid:
     def __init__(self):
         self.entities = {}  #{(x, y): entity}
 
-        #self.entities = []
-        #self.occupied = set()
-
     def add_entity(self, entity):
         self.entities[(entity.x_pos, entity.y_pos)] = entity
 
     def is_blocked(self, x, y):
         entity = self.entities.get((x, y))
         return entity is not None and entity.blocking
-    
+
+    def move_entity(self, entity, new_x, new_y, ignore_blocking=False):
+        if not (0 <= new_x < GRID_WIDTH and 0 <= new_y < GRID_HEIGHT):
+            return False
+
+        # Allowing for moving into own cell and enforcing blocking if not ignored
+        if (
+                not ignore_blocking
+                and self.is_blocked(new_x, new_y)
+                and (new_x, new_y) != (entity.x_pos, entity.y_pos)
+        ):
+            return False
+
+        old_key = (entity.x_pos, entity.y_pos)
+        if old_key in self.entities:
+            del self.entities[old_key]
+
+        entity.x_pos = new_x
+        entity.y_pos = new_y
+        self.entities[(new_x, new_y)] = entity
+        return True
+
     def rand_gen_walls(self, count):
         placed = 0
 
