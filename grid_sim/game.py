@@ -1,10 +1,17 @@
+"""
+grid_sim/game.py — updated with metrics integration
+
+This is your existing game.py with the metrics system wired in.
+Key changes are marked with # NEW comments.
+"""
+
 import pygame
 from .config import *
 from .grid import Grid
 from .entities import Movable
 from .stats import SimStats
+from .metrics import EntityMetrics, Zone, random_entity_metrics, SPEED_TIERS  # NEW
 
-# Constants to make life slightly easier
 PHASE_PLANNING = "PLANNING"
 PHASE_MOVING = "MOVING"
 PHASE_FINISHED = "FINISHED"
@@ -15,40 +22,51 @@ def _render_lines(window, font, lines, x=10, y=10, color=(255, 255, 255), line_g
         surf = font.render(line, True, color)
         window.blit(surf, (x, yy))
         yy += surf.get_height() + line_gap
+
 def game():
     pygame.init()
-    
+
     window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Test Sim")
 
     clock = pygame.time.Clock()
     running = True
 
-    #Create grid
-    #randomly generate 20 wall entities
     grid = Grid()
     grid.rand_gen_walls(100)
 
-    #Font
     font = pygame.font.Font(None, 26)
 
     paused = False
     phase = PHASE_PLANNING
 
-    # Stats tracker
     stats = SimStats()
 
-    #Two movable entities
-    movables = [
-        Movable((0, 0, 255), 15, 15),  # Red
-        Movable((0, 0, 255), 10, 10),  # Blue
-    ]
-    for m in movables:
+    # NEW — Define start and destination zones
+    start_zone = Zone("Start", x=1, y=1, width=4, height=4, color=(40, 80, 120))
+    dest_zone = Zone("Objective", x=24, y=24, width=4, height=4, color=(80, 120, 40))
+
+    # NEW — Create entities with randomized metrics
+    movables = []
+    for i in range(2):
+        # Spawn inside the start zone
+        sx, sy = start_zone.random_point()
+
+        # Make sure we don't spawn on a wall
+        while grid.is_blocked(sx, sy):
+            sx, sy = start_zone.random_point()
+
+        m = Movable((0, 0, 255), sx, sy)
+
+        # Attach randomized metrics to the entity
+        m.metrics = random_entity_metrics()
+        m.metrics.destination_zone = dest_zone
+
+        movables.append(m)
         grid.add_entity(m)
 
 
-    #Movement constraints
-    move_delay = 150  #milliseconds between moves
+    move_delay = 150
     last_move_time = 0
 
     def reset_everything():
@@ -59,6 +77,9 @@ def game():
         stats.reset()
         for m in movables:
             m.reset_to_start(grid)
+            # NEW — Re-randomize metrics on reset
+            m.metrics = random_entity_metrics()
+            m.metrics.destination_zone = dest_zone
 
     def start_simulation():
         nonlocal paused, phase, last_move_time
@@ -71,113 +92,146 @@ def game():
 
     while running:
 
-        
-        # Event handling
         for event in pygame.event.get():
-
-            # Close window (X button)
             if event.type == pygame.QUIT:
                 running = False
                 continue
 
-            # Simulation keyboard controls
             if event.type == pygame.KEYDOWN:
-                # Pause and unpause (works in any phase)
                 if event.key == pygame.K_SPACE:
                     paused = not paused
-
-                # Reset (also works in any phase)
                 if event.key == pygame.K_r:
                     reset_everything()
-
-                # Start movement (only works from planning and finished)
                 if event.key == pygame.K_RETURN:
                     if phase in (PHASE_PLANNING, PHASE_FINISHED):
                         start_simulation()
 
-                # Planning controls
                 if phase == PHASE_PLANNING and not paused:
                     if event.key == pygame.K_BACKSPACE:
                         for m in movables:
                             if m.selected:
                                 m.undo_last_step()
-
                     if event.key == pygame.K_c:
                         for m in movables:
                             if m.selected:
                                 m.clear_plan()
 
-                    dx = 0
-                    dy = 0
-                    if event.key == pygame.K_UP:
-                        dy = -1
-                    elif event.key == pygame.K_DOWN:
-                        dy = 1
-                    elif event.key == pygame.K_LEFT:
-                        dx = -1
-                    elif event.key == pygame.K_RIGHT:
-                        dx = 1
+                    dx, dy = 0, 0
+                    if event.key == pygame.K_UP:    dy = -1
+                    elif event.key == pygame.K_DOWN:  dy = 1
+                    elif event.key == pygame.K_LEFT:  dx = -1
+                    elif event.key == pygame.K_RIGHT: dx = 1
 
                     if dx != 0 or dy != 0:
                         for m in movables:
                             if m.selected:
                                 m.plan_step(dx, dy, grid)
 
-            # Select a movable in planning phase (point and click)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if phase == PHASE_PLANNING and not paused:
                     for m in movables:
                         m.handle_click(event.pos)
 
+        # Movement phase with fuel tracking
         if phase == PHASE_MOVING and not paused:
             curr_time = pygame.time.get_ticks()
             if curr_time - last_move_time >= move_delay:
                 for m in movables:
+                    # NEW — Check fuel before moving
+                    if hasattr(m, "metrics") and m.metrics is not None:
+                        if m.metrics.is_out_of_fuel:
+                            stats.record_step(m, False)
+                            continue
+
                     moved = m.advance_one_step(grid)
                     stats.record_step(m, moved)
 
+                    # NEW — Burn fuel and track metrics
+                    if moved and hasattr(m, "metrics") and m.metrics is not None:
+                        m.metrics.burn_fuel_for_step()
+                        m.metrics.check_in_zone(m.x_pos, m.y_pos)
+
+                        # NEW — Check proximity to other entities
+                        for other in movables:
+                            if other is not m:
+                                if m.metrics.check_proximity(m.x_pos, m.y_pos, other.x_pos, other.y_pos):
+                                    if id(other) not in [id(e) for e in m.metrics.detected_entities]:
+                                        m.metrics.detected_entities.append(other)
+
                 last_move_time = curr_time
 
-                # Stop when all entities have reached their endpoints
-                if all(m.is_done() for m in movables):
+                if all(m.is_done() or (hasattr(m, "metrics") and m.metrics.is_out_of_fuel) for m in movables):
                     stats.finalize()
                     phase = PHASE_FINISHED
                     paused = True
 
-        window.fill(BG_COLOR) 
+        # ── Rendering ──
+        window.fill(BG_COLOR)
+
+        # NEW — Draw zones before grid entities
+        for zone in [start_zone, dest_zone]:
+            for (zx, zy) in zone.all_cells():
+                rect = pygame.Rect(zx * CELL_SIZE, zy * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                zone_surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+                zone_surf.fill((*zone.color, 60))
+                window.blit(zone_surf, rect)
+            # Zone label
+            label = font.render(zone.name, True, (200, 200, 220))
+            window.blit(label, (zone.x * CELL_SIZE + 2, zone.y * CELL_SIZE - 18))
+
         grid.draw(window)
-        
-        # UI / instructions
+
+        # NEW — Draw proximity circles during movement
+        if phase == PHASE_MOVING:
+            for m in movables:
+                if hasattr(m, "metrics") and m.metrics is not None:
+                    px = m.x_pos * CELL_SIZE + CELL_SIZE // 2
+                    py = m.y_pos * CELL_SIZE + CELL_SIZE // 2
+                    radius_px = m.metrics.proximity_radius * CELL_SIZE
+                    prox_surf = pygame.Surface((radius_px * 2, radius_px * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(prox_surf, (100, 180, 255, 30), (radius_px, radius_px), radius_px)
+                    pygame.draw.circle(prox_surf, (100, 180, 255, 80), (radius_px, radius_px), radius_px, 1)
+                    window.blit(prox_surf, (px - radius_px, py - radius_px))
+
+        # HUD
         if phase == PHASE_PLANNING:
             lines = [
                 "PHASE: PLANNING",
-                "Click a blue square to select it (white outline).",
-                "Arrow keys: add steps to its planned path (yellow dots).",
-                "Backspace: undo last step   C: clear plan",
-                "Enter: start simulation   Space: pause/unpause   R: reset",
+                "Click a blue square to select it.",
+                "Arrow keys: plan path   Backspace: undo   C: clear",
+                "Enter: start   Space: pause   R: reset",
             ]
+            # NEW — Show metrics for selected entity
+            for m in movables:
+                if m.selected and hasattr(m, "metrics") and m.metrics is not None:
+                    mt = m.metrics
+                    lines.append("")
+                    lines.append(f"Speed: {mt.speed_tier.upper()}  |  Fuel: {mt.fuel:.0f}/{mt.max_fuel:.0f}  |  Proximity: {mt.proximity_radius} cells")
+                    planned_len = len(m.planned_cells)
+                    tier = mt.get_speed_tier()
+                    est_cost = tier.fuel_per_step * planned_len
+                    lines.append(f"Planned steps: {planned_len}  |  Est. fuel cost: {est_cost:.1f}")
+
             _render_lines(window, font, lines, x=10, y=10)
 
         elif phase == PHASE_MOVING:
             lines = [
                 "PHASE: MOVEMENT",
-                "Entities are following their planned paths.",
-                "Space: pause/unpause   R: reset",
+                "Space: pause   R: reset",
             ]
+            # NEW — Live fuel readout
+            for i, m in enumerate(movables):
+                if hasattr(m, "metrics") and m.metrics is not None:
+                    mt = m.metrics
+                    lines.append(f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f}")
+
             _render_lines(window, font, lines, x=10, y=10)
 
         elif phase == PHASE_FINISHED:
-            # Draw the summary overlay on top of the grid
             stats.draw(window, font)
 
         if paused and phase != PHASE_FINISHED:
             _render_lines(window, font, ["PAUSED"], x=10, y=110, color=(255, 80, 80))
 
-        #pygame.draw draws to a back buffer, and pygame.display.flip() renders 
-        #drawings on screen
         pygame.display.flip()
-        
-        #60 FPS (in config)
-        #For every second, at most 60 frames should pass
-        #Note: 1 loop = 1 frame
         clock.tick(FPS)
