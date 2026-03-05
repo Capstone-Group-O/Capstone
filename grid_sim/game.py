@@ -2,6 +2,7 @@ import pygame
 from .config import *
 from .grid import Grid
 from .entities import Movable
+from .stats import SimStats
 
 # Constants to make life slightly easier
 PHASE_PLANNING = "PLANNING"
@@ -34,6 +35,9 @@ def game():
     paused = False
     phase = PHASE_PLANNING
 
+    # Stats tracker
+    stats = SimStats()
+
     #Two movable entities
     movables = [
         Movable((0, 0, 255), 15, 15),  # Red
@@ -52,6 +56,7 @@ def game():
         paused = False
         phase = PHASE_PLANNING
         last_move_time = 0
+        stats.reset()
         for m in movables:
             m.reset_to_start(grid)
 
@@ -60,6 +65,7 @@ def game():
         paused = False
         phase = PHASE_MOVING
         last_move_time = pygame.time.get_ticks()
+        stats.reset()
         for m in movables:
             m.start_movement()
 
@@ -127,45 +133,20 @@ def game():
             curr_time = pygame.time.get_ticks()
             if curr_time - last_move_time >= move_delay:
                 for m in movables:
-                    m.advance_one_step(grid)
+                    moved = m.advance_one_step(grid)
+                    stats.record_step(m, moved)
 
                 last_move_time = curr_time
 
                 # Stop when all entities have reached their endpoints
                 if all(m.is_done() for m in movables):
+                    stats.finalize()
                     phase = PHASE_FINISHED
                     paused = True
-
-            #Temporary movement using arrow keys
-            #This could be deleted once charting a path is implemented
-            # Keeping this in case we need this for any reason
-            # curr_time = pygame.time.get_ticks()
-            # if curr_time - last_move_time > move_delay:
-            #     keys = pygame.key.get_pressed()
-            #     for m in movables:
-            #         if m.selected:
-            #             dx = 0
-            #             dy = 0
-            #             if keys[pygame.K_UP]:
-            #                 dy -= 1
-            #             if keys[pygame.K_DOWN]:
-            #                 dy += 1
-            #             if keys[pygame.K_LEFT]:
-            #                 dx -= 1
-            #             if keys[pygame.K_RIGHT]:
-            #                 dx += 1
-            #
-            #             if dx != 0 or dy != 0:
-            #                 m.move(dx, dy, grid)
-            #                 last_move_time = curr_time
 
         window.fill(BG_COLOR) 
         grid.draw(window)
         
-        # if paused:
-        #     text = font.render("paused (press Space to unpause)", True, (255,0,0))
-        #     window.blit(text, (10,10))
-
         # UI / instructions
         if phase == PHASE_PLANNING:
             lines = [
@@ -186,12 +167,8 @@ def game():
             _render_lines(window, font, lines, x=10, y=10)
 
         elif phase == PHASE_FINISHED:
-            lines = [
-                "PHASE: FINISHED",
-                "All entities reached their endpoints.",
-                "Enter: run again   R: reset (and re-plan)",
-            ]
-            _render_lines(window, font, lines, x=10, y=10)
+            # Draw the summary overlay on top of the grid
+            stats.draw(window, font)
 
         if paused and phase != PHASE_FINISHED:
             _render_lines(window, font, ["PAUSED"], x=10, y=110, color=(255, 80, 80))
@@ -204,8 +181,3 @@ def game():
         #For every second, at most 60 frames should pass
         #Note: 1 loop = 1 frame
         clock.tick(FPS)
-    
-    
-
-
-
