@@ -1,6 +1,6 @@
 import pygame
 from .config import CELL_SIZE, GRID_WIDTH, GRID_HEIGHT
-
+import random
 
 class Entity():
     def __init__(self, color, x_pos, y_pos, blocking=False):
@@ -152,11 +152,34 @@ class Movable(Entity):
             )
             pygame.draw.rect(window, (255, 255, 255), rect, 3)
 
+class Fire(Entity):
+    SPREAD_CHANCE = 0.35
 
+    def __init__(self, x_pos, y_pos):
+        fire_color = (
+            random.randint(220,255),
+            random.randint(80,140),
+            random.randint(0,40)
+        )
+        super().__init__(fire_color, x_pos, y_pos, blocking=False)
 
+    def spread(self, grid):
+        # choose ONE direction randomly
+        directions = [
+            (1,0), (-1,0),
+            (0,1), (0,-1)
+        ]
 
+        dx, dy = random.choice(directions)
 
+        if random.random() > self.SPREAD_CHANCE:
+            return
 
+        x = self.x_pos + dx
+        y = self.y_pos + dy
 
+        if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
+            return
 
-
+        if (x, y) not in grid.entities:
+            grid.add_entity(Fire(x, y))
