@@ -1,7 +1,7 @@
 import pygame
 from .config import *
 import random
-from .entities import Wall
+from .entities import Wall, Fire
 
 class Grid:
     def __init__(self):
@@ -46,6 +46,47 @@ class Grid:
                 self.add_entity(Wall(x,y))
                 placed += 1
 
+    def rand_gen_fire(self, movables, cluster_count=2, min_cluster_distance=6, min_entity_distance=6):
+        centers = []
+
+        for _ in range(cluster_count):
+            while True:
+                cx = random.randint(0, GRID_WIDTH - 1)
+                cy = random.randint(0, GRID_HEIGHT - 1)
+                valid = True
+
+                # Check distance from other fire clusters
+                for ox, oy in centers:
+                    dist = abs(cx - ox) + abs(cy - oy)
+                    if dist < min_cluster_distance:
+                        valid = False
+                        break
+                if not valid:
+                    continue
+
+                # Check distance from movable entities
+                for m in movables:
+                    dist = abs(cx - m.x_pos) + abs(cy - m.y_pos)
+                    if dist < min_entity_distance:
+                        valid = False
+                        break
+                if valid:
+                    centers.append((cx, cy))
+                    break
+
+            # Generate cluster around center
+            cluster_size = random.randint(2, 4)
+            for _ in range(cluster_size):
+                dx = random.randint(-1, 1)
+                dy = random.randint(-1, 1)
+
+                x = cx + dx
+                y = cy + dy
+
+                if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
+                    continue
+                if (x, y) not in self.entities:
+                    self.add_entity(Fire(x, y))
 
     def draw(self, window):
 

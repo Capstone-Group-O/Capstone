@@ -1,7 +1,7 @@
 import pygame
 from .config import *
 from .grid import Grid
-from .entities import Movable
+from .entities import Movable, Fire
 
 # Constants to make life slightly easier
 PHASE_PLANNING = "PLANNING"
@@ -22,11 +22,23 @@ def game():
 
     clock = pygame.time.Clock()
     running = True
-
+    movables = [
+        Movable((0, 0, 255), 15, 15),  # Red
+        Movable((0, 0, 255), 10, 10),  # Blue
+    ]
+    
     #Create grid
     #randomly generate 20 wall entities
     grid = Grid()
     grid.rand_gen_walls(100)
+    grid.rand_gen_fire(movables, cluster_count=2,
+        min_cluster_distance=8,
+        min_entity_distance=7
+    )
+    initial_fire_positions = [
+        (x, y) for (x, y), entity in grid.entities.items()
+        if isinstance(entity, Fire)
+    ]
 
     #Font
     font = pygame.font.Font(None, 26)
@@ -35,10 +47,7 @@ def game():
     phase = PHASE_PLANNING
 
     #Two movable entities
-    movables = [
-        Movable((0, 0, 255), 15, 15),  # Red
-        Movable((0, 0, 255), 10, 10),  # Blue
-    ]
+    
     for m in movables:
         grid.add_entity(m)
 
@@ -46,6 +55,8 @@ def game():
     #Movement constraints
     move_delay = 150  #milliseconds between moves
     last_move_time = 0
+    fire_delay = 400
+    last_fire_time = 0
 
     def reset_everything():
         nonlocal paused, phase, last_move_time
@@ -55,11 +66,25 @@ def game():
         for m in movables:
             m.reset_to_start(grid)
 
+        # Remove all fire tiles
+        for pos, entity in list(grid.entities.items()):
+            if isinstance(entity, Fire):
+                del grid.entities[pos]
+        # Restore original fire cluster
+        for x, y in initial_fire_positions:
+            grid.add_entity(Fire(x, y))
+
     def start_simulation():
         nonlocal paused, phase, last_move_time
         paused = False
         phase = PHASE_MOVING
         last_move_time = pygame.time.get_ticks()
+        # Reset fire to original cluster
+        for pos, entity in list(grid.entities.items()):
+            if isinstance(entity, Fire):
+                del grid.entities[pos]
+        for x, y in initial_fire_positions:
+            grid.add_entity(Fire(x, y))
         for m in movables:
             m.start_movement()
 
@@ -135,6 +160,13 @@ def game():
                 if all(m.is_done() for m in movables):
                     phase = PHASE_FINISHED
                     paused = True
+
+            if curr_time - last_fire_time >= fire_delay:
+                for entity in list(grid.entities.values()):
+                    if isinstance(entity, Fire):
+                        entity.spread(grid)
+
+                last_fire_time = curr_time
 
             #Temporary movement using arrow keys
             #This could be deleted once charting a path is implemented
