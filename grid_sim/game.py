@@ -257,17 +257,7 @@ def game():
 
         elif phase == PHASE_FINISHED:
             stats.draw(window, font)
-            end_lines = []
-
-            for i, m in enumerate(movables):
-                end_lines.append(
-                    f"Entity {i+1}: Health Left {m.health:.1f} | "
-                    f"Time in Fire {m.time_in_fire} | "
-                    f"Fire Damage Taken {m.fire_damage_taken:.1f}"
-                )
-
-            _render_lines(window, font, end_lines, x=10, y=220, color=(255, 255, 255))
-
+        
         if paused and phase != PHASE_FINISHED:
             _render_lines(window, font, ["PAUSED"], x=10, y=110, color=(255, 80, 80))
 
