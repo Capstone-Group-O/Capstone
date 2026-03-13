@@ -82,7 +82,7 @@ class SimStats:
         card_y = 70
         card_margin = 20
         card_width = WINDOW_WIDTH - card_margin * 2
-        card_height = 200
+        card_height = 220
 
         stat_font = pygame.font.SysFont(None, 22)
 
@@ -131,6 +131,9 @@ class SimStats:
             self._draw_stat(window, stat_font, "Start", f"({d['start'][0]}, {d['start'][1]})", col2_x, row_y)
             self._draw_stat(window, stat_font, "End", f"({d['end'][0]}, {d['end'][1]})", col2_x, row_y + row_h)
             self._draw_stat(window, stat_font, "Direct Dist", f"{d['direct_dist']:.1f}", col2_x, row_y + row_h * 2)
+            self._draw_stat(window, stat_font, "Health Left", f"{entity.health:.1f}", col2_x, row_y + row_h * 3)
+            self._draw_stat(window, stat_font, "Time in Fire", str(entity.time_in_fire), col2_x, row_y + row_h * 4)
+            self._draw_stat(window, stat_font, "Fire Damage", f"{entity.fire_damage_taken:.1f}", col2_x, row_y + row_h * 5)
 
             # Column 3: Metrics (from EntityMetrics if available)
             has_metrics = hasattr(entity, "metrics") and entity.metrics is not None
