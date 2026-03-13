@@ -1,11 +1,12 @@
 import pygame
 from .config import *
 import random
-from .entities import Wall, Fire
+from .entities import Wall
 
 class Grid:
     def __init__(self):
         self.entities = {}  #{(x, y): entity}
+        self.fire_tiles = set()
 
     def add_entity(self, entity):
         self.entities[(entity.x_pos, entity.y_pos)] = entity
@@ -13,6 +14,26 @@ class Grid:
     def is_blocked(self, x, y):
         entity = self.entities.get((x, y))
         return entity is not None and entity.blocking
+    
+    def add_fire(self, x, y):
+        if 0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT:
+            self.fire_tiles.add((x, y))
+
+    def is_fire(self, x, y):
+        return (x, y) in self.fire_tiles
+
+    def is_adjacent_to_fire(self, x, y):
+        directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+        for dx, dy in directions:
+            nx = x + dx
+            ny = y + dy
+
+            if 0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT:
+                if self.is_fire(nx, ny):
+                    return True
+
+        return False
 
     def move_entity(self, entity, new_x, new_y, ignore_blocking=False):
         if not (0 <= new_x < GRID_WIDTH and 0 <= new_y < GRID_HEIGHT):
@@ -86,16 +107,43 @@ class Grid:
                 if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
                     continue
                 if (x, y) not in self.entities:
-                    self.add_entity(Fire(x, y))
+                    self.add_fire(x, y)
+    
+    def spread_fire(self):
+        new_fire_tiles = set(self.fire_tiles)
+        directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        for fx, fy in list(self.fire_tiles):
+             if random.random() > 0.35:
+                 continue
+             dx, dy = random.choice(directions)
+             nx, ny = fx + dx, fy + dy
+             
+             if not (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT):
+                continue
+             if not self.is_blocked(nx, ny):
+                new_fire_tiles.add((nx, ny))
+                
+        self.fire_tiles = new_fire_tiles
+        
 
     def draw(self, window):
 
-        #Draw the grid
+        # Draw the grid
         for x in range(0, WINDOW_WIDTH, CELL_SIZE):
             pygame.draw.line(window, GRID_COLOR, (x, 0), (x, WINDOW_HEIGHT))
         for y in range(0, WINDOW_HEIGHT, CELL_SIZE):
             pygame.draw.line(window, GRID_COLOR, (0, y), (WINDOW_WIDTH, y))
 
-        #Draw entities
+        # Draw fire tiles
+        for fx, fy in self.fire_tiles:
+            rect = pygame.Rect(
+                fx * CELL_SIZE,
+                fy * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE
+            )
+            pygame.draw.rect(window, (255, 100, 0), rect)
+
+        # Draw entities
         for entity in self.entities.values():
             entity.draw(window)
