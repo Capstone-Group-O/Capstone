@@ -8,7 +8,7 @@ Key changes are marked with # NEW comments.
 import pygame
 from .config import *
 from .grid import Grid
-from .entities import Movable, Fire
+from .entities import Movable
 from .stats import SimStats
 from .metrics import EntityMetrics, Zone, random_entity_metrics, SPEED_TIERS  # NEW
 
@@ -35,14 +35,6 @@ def game():
 
     grid = Grid()
     grid.rand_gen_walls(100)
-    grid.rand_gen_fire(movables, cluster_count=2,
-        min_cluster_distance=8,
-        min_entity_distance=7
-    )
-    initial_fire_positions = [
-        (x, y) for (x, y), entity in grid.entities.items()
-        if isinstance(entity, Fire)
-    ]
 
     font = pygame.font.Font(None, 26)
 
@@ -72,6 +64,14 @@ def game():
 
         movables.append(m)
         grid.add_entity(m)
+    
+    grid.rand_gen_fire(
+        movables,
+        cluster_count=2,
+        min_cluster_distance=8,
+        min_entity_distance=7
+    )
+    initial_fire_positions = list(grid.fire_tiles)
 
 
     move_delay = 150
@@ -80,10 +80,11 @@ def game():
     last_fire_time = 0
 
     def reset_everything():
-        nonlocal paused, phase, last_move_time
+        nonlocal paused, phase, last_move_time, last_fire_time
         paused = False
         phase = PHASE_PLANNING
         last_move_time = 0
+        last_fire_time = 0
         stats.reset()
         for m in movables:
             m.reset_to_start(grid)
@@ -91,26 +92,21 @@ def game():
             m.metrics = random_entity_metrics()
             m.metrics.destination_zone = dest_zone
 
-        # Remove all fire tiles
-        for pos, entity in list(grid.entities.items()):
-            if isinstance(entity, Fire):
-                del grid.entities[pos]
-        # Restore original fire cluster
+        grid.fire_tiles.clear()
         for x, y in initial_fire_positions:
-            grid.add_entity(Fire(x, y))
+            grid.add_fire(x, y)
 
     def start_simulation():
-        nonlocal paused, phase, last_move_time
+        nonlocal paused, phase, last_move_time, last_fire_time
         paused = False
         phase = PHASE_MOVING
         last_move_time = pygame.time.get_ticks()
+        last_fire_time = pygame.time.get_ticks()
         stats.reset()
-        # Reset fire to original cluster
-        for pos, entity in list(grid.entities.items()):
-            if isinstance(entity, Fire):
-                del grid.entities[pos]
+        grid.fire_tiles.clear()
         for x, y in initial_fire_positions:
-            grid.add_entity(Fire(x, y))
+            grid.add_fire(x, y)
+
         for m in movables:
             m.start_movement()
 
@@ -165,9 +161,11 @@ def game():
                     if hasattr(m, "metrics") and m.metrics is not None:
                         if m.metrics.is_out_of_fuel:
                             stats.record_step(m, False)
+                            m.apply_fire_damage(grid)
                             continue
 
                     moved = m.advance_one_step(grid)
+                    m.apply_fire_damage(grid)
                     stats.record_step(m, moved)
 
                     # NEW — Burn fuel and track metrics
@@ -190,11 +188,9 @@ def game():
                     paused = True
 
             if curr_time - last_fire_time >= fire_delay:
-                for entity in list(grid.entities.values()):
-                    if isinstance(entity, Fire):
-                        entity.spread(grid)
+               grid.spread_fire()
+               last_fire_time = curr_time
 
-                last_fire_time = curr_time
 
         # ── Rendering ──
         window.fill(BG_COLOR)
@@ -255,12 +251,13 @@ def game():
                 if hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
                     lines.append(f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f}")
+                    lines.append(f"health {m.health:.1f} | fire dmg {m.fire_damage_taken:.1f} | in fire {m.time_in_fire}")
 
             _render_lines(window, font, lines, x=10, y=10)
 
         elif phase == PHASE_FINISHED:
             stats.draw(window, font)
-
+        
         if paused and phase != PHASE_FINISHED:
             _render_lines(window, font, ["PAUSED"], x=10, y=110, color=(255, 80, 80))
 
