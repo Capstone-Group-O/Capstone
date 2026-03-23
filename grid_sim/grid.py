@@ -6,7 +6,7 @@ from .entities import Wall
 class Grid:
     def __init__(self):
         self.entities = {}  #{(x, y): entity}
-        self.fire_tiles = set()
+        self.fire_tiles = set() # Mark entity as destroyed when health is depleted
 
     def add_entity(self, entity):
         self.entities[(entity.x_pos, entity.y_pos)] = entity
@@ -16,13 +16,17 @@ class Grid:
         return entity is not None and entity.blocking
     
     def add_fire(self, x, y):
+        # Fire is stored separately from entities so it behaves like a hazard layer
         if 0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT:
             self.fire_tiles.add((x, y))
 
     def is_fire(self, x, y):
+        # Returns True if this grid cell currently contains fire
         return (x, y) in self.fire_tiles
 
     def is_adjacent_to_fire(self, x, y):
+        # Checks the four neighboring cells to see if the entity is near fire
+
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
         for dx, dy in directions:
@@ -68,6 +72,7 @@ class Grid:
                 placed += 1
 
     def rand_gen_fire(self, movables, cluster_count=2, min_cluster_distance=6, min_entity_distance=6):
+        # Generates clustered fire tiles while keeping them away from starting entities
         centers = []
 
         for _ in range(cluster_count):
@@ -110,6 +115,7 @@ class Grid:
                     self.add_fire(x, y)
     
     def spread_fire(self):
+        # Fire spreads from existing fire tiles into neighboring cells over time
         new_fire_tiles = set(self.fire_tiles)
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         for fx, fy in list(self.fire_tiles):
@@ -117,9 +123,10 @@ class Grid:
                  continue
              dx, dy = random.choice(directions)
              nx, ny = fx + dx, fy + dy
-             
+             # Prevent fire from spreading outside the map
              if not (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT):
                 continue
+             # Fire should not spread into blocked terrain such as walls
              if not self.is_blocked(nx, ny):
                 new_fire_tiles.add((nx, ny))
                 

@@ -65,12 +65,14 @@ def game():
         movables.append(m)
         grid.add_entity(m)
     
+    # Generate fire after movables are placed so fire can spawn away from entities
     grid.rand_gen_fire(
         movables,
         cluster_count=2,
         min_cluster_distance=8,
         min_entity_distance=7
     )
+    # Generate fire after movables are placed so fire can spawn away from entities
     initial_fire_positions = list(grid.fire_tiles)
 
 
@@ -92,6 +94,7 @@ def game():
             m.metrics = random_entity_metrics()
             m.metrics.destination_zone = dest_zone
 
+        # Reset fire to the original fire layout
         grid.fire_tiles.clear()
         for x, y in initial_fire_positions:
             grid.add_fire(x, y)
@@ -103,6 +106,7 @@ def game():
         last_move_time = pygame.time.get_ticks()
         last_fire_time = pygame.time.get_ticks()
         stats.reset()
+        # Restore initial fire before starting the run
         grid.fire_tiles.clear()
         for x, y in initial_fire_positions:
             grid.add_fire(x, y)
@@ -164,6 +168,7 @@ def game():
                             m.apply_fire_damage(grid)
                             continue
 
+                    # Apply thermal damage after movement so fire affects entity survival
                     moved = m.advance_one_step(grid)
                     m.apply_fire_damage(grid)
                     stats.record_step(m, moved)
@@ -187,6 +192,7 @@ def game():
                     phase = PHASE_FINISHED
                     paused = True
 
+            # Spread fire at a slower interval than movement
             if curr_time - last_fire_time >= fire_delay:
                grid.spread_fire()
                last_fire_time = curr_time
@@ -251,6 +257,7 @@ def game():
                 if hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
                     lines.append(f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f}")
+                    # Added live health/fire stats to show hazard impact during the run
                     lines.append(f"health {m.health:.1f} | fire dmg {m.fire_damage_taken:.1f} | in fire {m.time_in_fire}")
 
             _render_lines(window, font, lines, x=10, y=10)

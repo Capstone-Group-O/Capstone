@@ -45,7 +45,7 @@ class Movable(Entity):
 
         # planning / movement state
         self._reset_planning_state()
-        # thermal damage / metrics
+        # thermal damage / metrics 
         self.max_health = 100
         self.health = 100
         self.fire_damage_taken = 0
@@ -69,6 +69,7 @@ class Movable(Entity):
         grid.move_entity(self, self.start_x, self.start_y, ignore_blocking=True)
         self.selected = False
         self._reset_planning_state()
+        # Reset fire/health metrics when restarting the simulation
         self.health = self.max_health
         self.fire_damage_taken = 0
         self.time_in_fire = 0
@@ -116,6 +117,7 @@ class Movable(Entity):
         self._next_step_idx = 0
 
     def is_done(self):
+        # Entity is considered done if it finished its path or was destroyed by fire
         return self.destroyed or self._next_step_idx >= len(self.planned_cells)
 
     def advance_one_step(self, grid):
@@ -136,6 +138,8 @@ class Movable(Entity):
         return True
     
     def apply_fire_damage(self, grid):
+        # Apply thermal damage based on whether the entity is in fire
+        # or one tile away from fire
         if self.destroyed:
             return
 
@@ -145,24 +149,28 @@ class Movable(Entity):
         damage = 0
 
         if on_fire:
+            # Direct fire contact causes high damage
             self.time_in_fire += 1
             self.exposure_ticks += 1
             multiplier = min(1 + 0.25 * (self.exposure_ticks - 1), 2.0)
             damage = 10 * multiplier
 
         elif near_fire:
+            # Direct fire contact causes high damage
             self.time_near_fire += 1
             self.exposure_ticks += 1
             multiplier = min(1 + 0.25 * (self.exposure_ticks - 1), 2.0)
             damage = 3 * multiplier
 
         else:
+            # Exposure resets when the entity reaches a safe tile
             self.exposure_ticks = 0
 
         if damage > 0:
             self.health -= damage
             self.fire_damage_taken += damage
 
+        # Mark entity as destroyed when health is depleted
         if self.health <= 0:
             self.health = 0
             self.destroyed = True
