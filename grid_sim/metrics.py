@@ -15,6 +15,8 @@ import math
 import random
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
+import pygame
+from .config import CELL_SIZE
 
 
 # ──────────────────────────────────────────────
@@ -67,6 +69,20 @@ class Zone:
             for cy in range(self.y, self.y + self.height):
                 cells.append((cx, cy))
         return cells
+
+    def draw(self, window):
+        rect = pygame.Rect(
+            self.x * CELL_SIZE,
+            self.y * CELL_SIZE,
+            self.width * CELL_SIZE,
+            self.height * CELL_SIZE
+        )
+
+        zone_surface = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        zone_surface.fill((*self.color, 70))
+        window.blit(zone_surface, (rect.x, rect.y))
+
+        pygame.draw.rect(window, self.color, rect, 2)
 
 
 # ──────────────────────────────────────────────
