@@ -91,6 +91,7 @@ class EntityMetrics:
 
     # Destination zone tracking
     destination_zone: Optional[Zone] = None
+    objective_cell: Optional[Tuple[int, int]] = None
     reached_destination: bool = False
 
     @property
@@ -134,7 +135,19 @@ class EntityMetrics:
         return dist <= self.proximity_radius
 
     def check_in_zone(self, x, y) -> bool:
-        """Check if entity has reached its destination zone."""
+        """
+        Check if entity has reached its assigned objective.
+
+        If an objective cell is assigned, the entity must reach that specific
+        cell. Otherwise, falling back to the destination zone preserves the
+        original zone-based behavior.
+        """
+        if self.objective_cell is not None:
+            if (x, y) == self.objective_cell:
+                self.reached_destination = True
+                return True
+            return False
+
         if self.destination_zone is None:
             return False
         if self.destination_zone.contains(x, y):

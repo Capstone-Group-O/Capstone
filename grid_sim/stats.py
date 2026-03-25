@@ -149,7 +149,8 @@ class SimStats:
                 if m.destination_zone:
                     zone_status = "REACHED" if m.reached_destination else "MISSED"
                     zone_color = (90, 220, 140) if m.reached_destination else (240, 120, 120)
-                    zone_surf = stat_font.render(f"Zone: {m.destination_zone.name} [{zone_status}]", True, zone_color)
+                    zone_label = f"Zone: {m.destination_zone.name} [{zone_status}]"
+                    zone_surf = stat_font.render(zone_label, True, zone_color)
                     window.blit(zone_surf, (col3_x, row_y + row_h * 5))
 
                 # Fuel bar
