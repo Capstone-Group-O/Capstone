@@ -47,6 +47,34 @@ def game():
     start_zone = Zone("Start", x=1, y=1, width=4, height=4, color=(40, 80, 120))
     dest_zone = Zone("Objective", x=24, y=24, width=4, height=4, color=(80, 120, 40))
 
+    def build_objective_cells():
+        """Choose two distinct objective cells inside the destination zone."""
+        preferred_cells = [
+            (dest_zone.x + 1, dest_zone.y + 1),
+            (dest_zone.x + dest_zone.width - 2, dest_zone.y + dest_zone.height - 2),
+            (dest_zone.x + 1, dest_zone.y + dest_zone.height - 2),
+            (dest_zone.x + dest_zone.width - 2, dest_zone.y + 1),
+        ]
+        open_cells = []
+
+        for cell in preferred_cells:
+            if dest_zone.contains(*cell) and not grid.is_blocked(*cell):
+                open_cells.append(cell)
+
+        if len(open_cells) < 2:
+            for cell in dest_zone.all_cells():
+                if cell not in open_cells and not grid.is_blocked(*cell):
+                    open_cells.append(cell)
+                if len(open_cells) >= 2:
+                    break
+
+        if len(open_cells) < 2:
+            raise RuntimeError("Not enough open cells inside the objective zone for both entities.")
+
+        return open_cells[:2]
+
+    objective_cells = build_objective_cells()
+
     # NEW — Create entities with randomized metrics
     for i in range(2):
         # Spawn inside the start zone
@@ -61,10 +89,11 @@ def game():
         # Attach randomized metrics to the entity
         m.metrics = random_entity_metrics()
         m.metrics.destination_zone = dest_zone
+        m.metrics.objective_cells = objective_cells
 
         movables.append(m)
         grid.add_entity(m)
-    
+
     # Generate fire after movables are placed so fire can spawn away from entities
     grid.rand_gen_fire(
         movables,
@@ -72,9 +101,7 @@ def game():
         min_cluster_distance=8,
         min_entity_distance=7
     )
-    # Generate fire after movables are placed so fire can spawn away from entities
     initial_fire_positions = list(grid.fire_tiles)
-
 
     move_delay = 150
     last_move_time = 0
@@ -88,11 +115,13 @@ def game():
         last_move_time = 0
         last_fire_time = 0
         stats.reset()
+
         for m in movables:
             m.reset_to_start(grid)
             # NEW — Re-randomize metrics on reset
             m.metrics = random_entity_metrics()
             m.metrics.destination_zone = dest_zone
+            m.metrics.objective_cells = objective_cells
 
         # Reset fire to the original fire layout
         grid.fire_tiles.clear()
@@ -106,6 +135,7 @@ def game():
         last_move_time = pygame.time.get_ticks()
         last_fire_time = pygame.time.get_ticks()
         stats.reset()
+
         # Restore initial fire before starting the run
         grid.fire_tiles.clear()
         for x, y in initial_fire_positions:
@@ -141,10 +171,14 @@ def game():
                                 m.clear_plan()
 
                     dx, dy = 0, 0
-                    if event.key == pygame.K_UP:    dy = -1
-                    elif event.key == pygame.K_DOWN:  dy = 1
-                    elif event.key == pygame.K_LEFT:  dx = -1
-                    elif event.key == pygame.K_RIGHT: dx = 1
+                    if event.key == pygame.K_UP:
+                        dy = -1
+                    elif event.key == pygame.K_DOWN:
+                        dy = 1
+                    elif event.key == pygame.K_LEFT:
+                        dx = -1
+                    elif event.key == pygame.K_RIGHT:
+                        dx = 1
 
                     if dx != 0 or dy != 0:
                         for m in movables:
@@ -159,6 +193,7 @@ def game():
         # Movement phase with fuel tracking
         if phase == PHASE_MOVING and not paused:
             curr_time = pygame.time.get_ticks()
+
             if curr_time - last_move_time >= move_delay:
                 for m in movables:
                     # NEW — Check fuel before moving
@@ -194,23 +229,25 @@ def game():
 
             # Spread fire at a slower interval than movement
             if curr_time - last_fire_time >= fire_delay:
-               grid.spread_fire()
-               last_fire_time = curr_time
-
+                grid.spread_fire()
+                last_fire_time = curr_time
 
         # ── Rendering ──
         window.fill(BG_COLOR)
 
         # NEW — Draw zones before grid entities
-        for zone in [start_zone, dest_zone]:
-            for (zx, zy) in zone.all_cells():
-                rect = pygame.Rect(zx * CELL_SIZE, zy * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                zone_surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
-                zone_surf.fill((*zone.color, 60))
-                window.blit(zone_surf, rect)
-            # Zone label
-            label = font.render(zone.name, True, (200, 200, 220))
-            window.blit(label, (zone.x * CELL_SIZE + 2, zone.y * CELL_SIZE - 18))
+        for zone in (start_zone, dest_zone):
+            zone.draw(window)
+
+        label = font.render(start_zone.name, True, (200, 200, 220))
+        window.blit(label, (start_zone.x * CELL_SIZE + 2, start_zone.y * CELL_SIZE - 18))
+
+        # Draw the shared objective blocks inside the destination zone
+        for (ox, oy) in objective_cells:
+            block_rect = pygame.Rect(ox * CELL_SIZE, oy * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            inset_rect = block_rect.inflate(-6, -6)
+            pygame.draw.rect(window, (210, 210, 80), inset_rect, border_radius=3)
+            pygame.draw.rect(window, (240, 240, 240), inset_rect, 2, border_radius=3)
 
         grid.draw(window)
 
@@ -234,12 +271,15 @@ def game():
                 "Arrow keys: plan path   Backspace: undo   C: clear",
                 "Enter: start   Space: pause   R: reset",
             ]
+
             # NEW — Show metrics for selected entity
             for m in movables:
                 if m.selected and hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
                     lines.append("")
-                    lines.append(f"Speed: {mt.speed_tier.upper()}  |  Fuel: {mt.fuel:.0f}/{mt.max_fuel:.0f}  |  Proximity: {mt.proximity_radius} cells")
+                    lines.append(
+                        f"Speed: {mt.speed_tier.upper()}  |  Fuel: {mt.fuel:.0f}/{mt.max_fuel:.0f}  |  Proximity: {mt.proximity_radius} cells"
+                    )
                     planned_len = len(m.planned_cells)
                     tier = mt.get_speed_tier()
                     est_cost = tier.fuel_per_step * planned_len
@@ -252,11 +292,15 @@ def game():
                 "PHASE: MOVEMENT",
                 "Space: pause   R: reset",
             ]
+
             # NEW — Live fuel readout
             for i, m in enumerate(movables):
                 if hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
-                    lines.append(f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f}")
+                    objective_status = "reached" if mt.reached_destination else "en route"
+                    lines.append(
+                        f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f} | objective {objective_status}"
+                    )
                     # Added live health/fire stats to show hazard impact during the run
                     lines.append(f"health {m.health:.1f} | fire dmg {m.fire_damage_taken:.1f} | in fire {m.time_in_fire}")
 
@@ -264,7 +308,7 @@ def game():
 
         elif phase == PHASE_FINISHED:
             stats.draw(window, font)
-        
+
         if paused and phase != PHASE_FINISHED:
             _render_lines(window, font, ["PAUSED"], x=10, y=110, color=(255, 80, 80))
 

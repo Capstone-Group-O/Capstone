@@ -15,6 +15,8 @@ import math
 import random
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
+import pygame
+from .config import CELL_SIZE
 
 
 # ──────────────────────────────────────────────
@@ -68,6 +70,20 @@ class Zone:
                 cells.append((cx, cy))
         return cells
 
+    def draw(self, window):
+        rect = pygame.Rect(
+            self.x * CELL_SIZE,
+            self.y * CELL_SIZE,
+            self.width * CELL_SIZE,
+            self.height * CELL_SIZE
+        )
+
+        zone_surface = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        zone_surface.fill((*self.color, 70))
+        window.blit(zone_surface, (rect.x, rect.y))
+
+        pygame.draw.rect(window, self.color, rect, 2)
+
 
 # ──────────────────────────────────────────────
 # ENTITY METRICS — attached to each Movable
@@ -91,6 +107,7 @@ class EntityMetrics:
 
     # Destination zone tracking
     destination_zone: Optional[Zone] = None
+    objective_cell: Optional[Tuple[int, int]] = None
     reached_destination: bool = False
 
     @property
@@ -134,7 +151,19 @@ class EntityMetrics:
         return dist <= self.proximity_radius
 
     def check_in_zone(self, x, y) -> bool:
-        """Check if entity has reached its destination zone."""
+        """
+        Check if entity has reached its assigned objective.
+
+        If an objective cell is assigned, the entity must reach that specific
+        cell. Otherwise, falling back to the destination zone preserves the
+        original zone-based behavior.
+        """
+        if self.objective_cell is not None:
+            if (x, y) == self.objective_cell:
+                self.reached_destination = True
+                return True
+            return False
+
         if self.destination_zone is None:
             return False
         if self.destination_zone.contains(x, y):
