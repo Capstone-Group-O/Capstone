@@ -30,6 +30,161 @@ class Wall(Entity):
         super().__init__(wall_color,x_pos, y_pos, blocking=True)
 
 
+# ──────────────────────────────────────────────
+# NEW TERRAIN TYPES
+# ──────────────────────────────────────────────
+
+class Water(Entity):
+    """
+    Water tiles block movement entirely (impassable terrain).
+    
+    Future integration points:
+        - Could become passable at reduced speed for amphibious entities
+        - Could interact with the metrics system via a terrain_modifier > 1.0
+          (see cell_movement_cost in metrics.py)
+        - Pathing algorithms (A*) should treat water as blocked unless the
+          entity has a water-traversal capability
+    """
+    def __init__(self, x_pos, y_pos):
+        # Slight color variation per tile for a natural look
+        blue = random.randint(140, 180)
+        green = random.randint(80, 120)
+        water_color = (30, green, blue)
+        super().__init__(water_color, x_pos, y_pos, blocking=True)
+
+    def draw(self, window):
+        rect = pygame.Rect(
+            self.x_pos * CELL_SIZE,
+            self.y_pos * CELL_SIZE,
+            CELL_SIZE,
+            CELL_SIZE
+        )
+        pygame.draw.rect(window, self.color, rect)
+
+        # Wave accent line for visual distinction from walls
+        wave_y = self.y_pos * CELL_SIZE + CELL_SIZE // 2
+        wave_x1 = self.x_pos * CELL_SIZE + 3
+        wave_x2 = self.x_pos * CELL_SIZE + CELL_SIZE - 3
+        pygame.draw.line(
+            window,
+            (80, 160, 220),
+            (wave_x1, wave_y),
+            (wave_x2, wave_y),
+            1
+        )
+
+
+class Barrier(Entity):
+    """
+    Barriers are hard obstacles (concrete, rubble, collapsed structures).
+    They block all movement and cannot be destroyed by fire.
+
+    Future integration points:
+        - Could have a durability value that degrades over time or under force
+        - Pathing algorithms should treat these as permanently blocked
+        - Could be placed dynamically during the sim to model collapsing terrain
+    """
+    def __init__(self, x_pos, y_pos):
+        # Dark reddish-brown tones to distinguish from gray walls
+        r = random.randint(100, 130)
+        g = random.randint(50, 70)
+        b = random.randint(40, 60)
+        barrier_color = (r, g, b)
+        super().__init__(barrier_color, x_pos, y_pos, blocking=True)
+
+    def draw(self, window):
+        rect = pygame.Rect(
+            self.x_pos * CELL_SIZE,
+            self.y_pos * CELL_SIZE,
+            CELL_SIZE,
+            CELL_SIZE
+        )
+        pygame.draw.rect(window, self.color, rect)
+
+        # Cross-hatch accent to visually separate from walls and water
+        x0 = self.x_pos * CELL_SIZE
+        y0 = self.y_pos * CELL_SIZE
+        accent = (70, 40, 35)
+        pygame.draw.line(window, accent, (x0 + 2, y0 + 2), (x0 + CELL_SIZE - 3, y0 + CELL_SIZE - 3), 1)
+        pygame.draw.line(window, accent, (x0 + CELL_SIZE - 3, y0 + 2), (x0 + 2, y0 + CELL_SIZE - 3), 1)
+
+
+class Forest(Entity):
+    """
+    Forest tiles are passable but slow movement (movement cost modifier).
+
+    Entities CAN move through forest, but it costs more fuel. Fire can
+    spread into and through forest tiles, and forest tiles increase fire
+    spread chance when adjacent.
+
+    Future integration points:
+        - terrain_modifier for metrics.cell_movement_cost (suggested: 2.0)
+        - A* heuristic should weight forest cells higher than open ground
+        - Fire spread probability could increase when a fire tile neighbors forest
+        - Could reduce entity visibility / proximity radius while inside
+    """
+    TERRAIN_MODIFIER = 2.0  # Double fuel cost to move through forest
+
+    def __init__(self, x_pos, y_pos):
+        # Green tones darker than the BG_COLOR to read as dense terrain
+        g = random.randint(100, 150)
+        r = random.randint(20, 50)
+        b = random.randint(15, 40)
+        forest_color = (r, g, b)
+        super().__init__(forest_color, x_pos, y_pos, blocking=False)
+
+    def draw(self, window):
+        rect = pygame.Rect(
+            self.x_pos * CELL_SIZE,
+            self.y_pos * CELL_SIZE,
+            CELL_SIZE,
+            CELL_SIZE
+        )
+        pygame.draw.rect(window, self.color, rect)
+
+        # Small tree-like triangle accent
+        cx = self.x_pos * CELL_SIZE + CELL_SIZE // 2
+        top_y = self.y_pos * CELL_SIZE + 3
+        bot_y = self.y_pos * CELL_SIZE + CELL_SIZE - 3
+        left_x = self.x_pos * CELL_SIZE + 4
+        right_x = self.x_pos * CELL_SIZE + CELL_SIZE - 4
+        accent = (10, min(self.color[1] + 40, 255), 20)
+        pygame.draw.polygon(window, accent, [(cx, top_y), (left_x, bot_y), (right_x, bot_y)], 1)
+
+
+class Fire(Entity):
+    SPREAD_CHANCE = 0.35
+
+    def __init__(self, x_pos, y_pos):
+        fire_color = (
+            random.randint(220,255),
+            random.randint(80,140),
+            random.randint(0,40)
+        )
+        super().__init__(fire_color, x_pos, y_pos, blocking=False)
+
+    def spread(self, grid):
+        # choose ONE direction randomly
+        directions = [
+            (1,0), (-1,0),
+            (0,1), (0,-1)
+        ]
+
+        dx, dy = random.choice(directions)
+
+        if random.random() > self.SPREAD_CHANCE:
+            return
+
+        x = self.x_pos + dx
+        y = self.y_pos + dy
+
+        if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
+            return
+
+        if (x, y) not in grid.entities:
+            grid.add_entity(Fire(x, y))
+
+
 #Movable entity
 class Movable(Entity):
     PATH_DOT_COLOR = (255, 255, 0)  # yellow
@@ -176,19 +331,6 @@ class Movable(Entity):
             self.destroyed = True
             self.selected = False
 
-    # Movement was originally done manually this way through WASD
-    # Keeping this here in case we ever need something like it in the future
-    # def move(self, dx, dy, grid):
-    #     new_x = self.x_pos + dx
-    #     new_y = self.y_pos + dy
-    #
-    #     if 0 <= new_x < GRID_WIDTH and 0 <= new_y < GRID_HEIGHT:
-    #         if not grid.is_blocked(new_x, new_y):
-    #             del grid.entities[(self.x_pos, self.y_pos)]
-    #             self.x_pos = new_x
-    #             self.y_pos = new_y
-    #             grid.entities[(self.x_pos, self.y_pos)] = self
-
     def draw(self, window):
         # Draw planned path dots first so entity draws on top
         for (x, y) in self.planned_cells:
@@ -209,35 +351,3 @@ class Movable(Entity):
                 CELL_SIZE
             )
             pygame.draw.rect(window, (255, 255, 255), rect, 3)
-
-class Fire(Entity):
-    SPREAD_CHANCE = 0.35
-
-    def __init__(self, x_pos, y_pos):
-        fire_color = (
-            random.randint(220,255),
-            random.randint(80,140),
-            random.randint(0,40)
-        )
-        super().__init__(fire_color, x_pos, y_pos, blocking=False)
-
-    def spread(self, grid):
-        # choose ONE direction randomly
-        directions = [
-            (1,0), (-1,0),
-            (0,1), (0,-1)
-        ]
-
-        dx, dy = random.choice(directions)
-
-        if random.random() > self.SPREAD_CHANCE:
-            return
-
-        x = self.x_pos + dx
-        y = self.y_pos + dy
-
-        if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
-            return
-
-        if (x, y) not in grid.entities:
-            grid.add_entity(Fire(x, y))
