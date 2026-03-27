@@ -136,10 +136,12 @@ class Grid:
     def draw(self, window):
 
         # Draw the grid
-        for x in range(0, WINDOW_WIDTH, CELL_SIZE):
-            pygame.draw.line(window, GRID_COLOR, (x, 0), (x, WINDOW_HEIGHT))
-        for y in range(0, WINDOW_HEIGHT, CELL_SIZE):
-            pygame.draw.line(window, GRID_COLOR, (0, y), (WINDOW_WIDTH, y))
+        w = GRID_WIDTH * CELL_SIZE
+        h = GRID_HEIGHT * CELL_SIZE
+        for x in range(0, w + 1, CELL_SIZE):
+            pygame.draw.line(window, GRID_COLOR, (x, 0), (x, h))
+        for y in range(0, h + 1, CELL_SIZE):
+            pygame.draw.line(window, GRID_COLOR, (0, y), (w, y))
 
         # Draw fire tiles
         for fx, fy in self.fire_tiles:

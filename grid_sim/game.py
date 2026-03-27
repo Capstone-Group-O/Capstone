@@ -7,6 +7,7 @@ Key changes are marked with # NEW comments.
 
 import pygame
 from .config import *
+from .config import WORLD_WIDTH, WORLD_HEIGHT
 from .grid import Grid
 from .entities import Movable
 from .stats import SimStats
@@ -16,18 +17,39 @@ PHASE_PLANNING = "PLANNING"
 PHASE_MOVING = "MOVING"
 PHASE_FINISHED = "FINISHED"
 
-def _render_lines(window, font, lines, x=10, y=10, color=(255, 255, 255), line_gap=2):
+def _render_lines(surface, font, lines, x=10, y=10, color=(255, 255, 255), line_gap=2):
     yy = y
     for line in lines:
         surf = font.render(line, True, color)
-        window.blit(surf, (x, yy))
+        surface.blit(surf, (x, yy))
         yy += surf.get_height() + line_gap
 
 def game():
     pygame.init()
 
-    window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Test Sim")
+
+    # Off-screen surface that the grid world is drawn to at native resolution
+    world_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
+
+    # Camera state
+    cam_zoom = 1.0
+    cam_x = 0.0
+    cam_y = 0.0
+    panning = False
+    pan_start = (0, 0)
+    cam_start = (0.0, 0.0)
+
+    ZOOM_MIN = 0.3
+    ZOOM_MAX = 4.0
+    ZOOM_STEP = 0.1
+
+    def screen_to_world(sx, sy):
+        """Convert screen (mouse) coordinates to world pixel coordinates."""
+        wx = (sx - cam_x) / cam_zoom
+        wy = (sy - cam_y) / cam_zoom
+        return wx, wy
 
     clock = pygame.time.Clock()
     running = True
@@ -151,6 +173,33 @@ def game():
                 running = False
                 continue
 
+            # Zoom with scroll wheel
+            if event.type == pygame.MOUSEWHEEL:
+                old_zoom = cam_zoom
+                cam_zoom += event.y * ZOOM_STEP
+                cam_zoom = max(ZOOM_MIN, min(ZOOM_MAX, cam_zoom))
+                # Zoom toward mouse pointer
+                mx, my = pygame.mouse.get_pos()
+                cam_x = mx - (mx - cam_x) * (cam_zoom / old_zoom)
+                cam_y = my - (my - cam_y) * (cam_zoom / old_zoom)
+
+            # Pan with right mouse button
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                panning = True
+                pan_start = event.pos
+                cam_start = (cam_x, cam_y)
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+                panning = False
+            if event.type == pygame.MOUSEMOTION and panning:
+                dx_px = event.pos[0] - pan_start[0]
+                dy_px = event.pos[1] - pan_start[1]
+                cam_x = cam_start[0] + dx_px
+                cam_y = cam_start[1] + dy_px
+
+            # Handle window resize
+            if event.type == pygame.VIDEORESIZE:
+                window = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     paused = not paused
@@ -185,10 +234,13 @@ def game():
                             if m.selected:
                                 m.plan_step(dx, dy, grid)
 
+            # Left click — transform screen coords to world coords
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if phase == PHASE_PLANNING and not paused:
+                    wx, wy = screen_to_world(*event.pos)
+                    world_pos = (int(wx), int(wy))
                     for m in movables:
-                        m.handle_click(event.pos)
+                        m.handle_click(world_pos)
 
         # Movement phase with fuel tracking
         if phase == PHASE_MOVING and not paused:
@@ -233,25 +285,24 @@ def game():
                 last_fire_time = curr_time
 
         # ── Rendering ──
-        window.fill(BG_COLOR)
 
-        # NEW — Draw zones before grid entities
+        # 1) Draw the world onto the off-screen surface
+        world_surface.fill(BG_COLOR)
+
         for zone in (start_zone, dest_zone):
-            zone.draw(window)
+            zone.draw(world_surface)
 
         label = font.render(start_zone.name, True, (200, 200, 220))
-        window.blit(label, (start_zone.x * CELL_SIZE + 2, start_zone.y * CELL_SIZE - 18))
+        world_surface.blit(label, (start_zone.x * CELL_SIZE + 2, start_zone.y * CELL_SIZE - 18))
 
-        # Draw the shared objective blocks inside the destination zone
         for (ox, oy) in objective_cells:
             block_rect = pygame.Rect(ox * CELL_SIZE, oy * CELL_SIZE, CELL_SIZE, CELL_SIZE)
             inset_rect = block_rect.inflate(-6, -6)
-            pygame.draw.rect(window, (210, 210, 80), inset_rect, border_radius=3)
-            pygame.draw.rect(window, (240, 240, 240), inset_rect, 2, border_radius=3)
+            pygame.draw.rect(world_surface, (210, 210, 80), inset_rect, border_radius=3)
+            pygame.draw.rect(world_surface, (240, 240, 240), inset_rect, 2, border_radius=3)
 
-        grid.draw(window)
+        grid.draw(world_surface)
 
-        # NEW — Draw proximity circles during movement
         if phase == PHASE_MOVING:
             for m in movables:
                 if hasattr(m, "metrics") and m.metrics is not None:
@@ -261,18 +312,27 @@ def game():
                     prox_surf = pygame.Surface((radius_px * 2, radius_px * 2), pygame.SRCALPHA)
                     pygame.draw.circle(prox_surf, (100, 180, 255, 30), (radius_px, radius_px), radius_px)
                     pygame.draw.circle(prox_surf, (100, 180, 255, 80), (radius_px, radius_px), radius_px, 1)
-                    window.blit(prox_surf, (px - radius_px, py - radius_px))
+                    world_surface.blit(prox_surf, (px - radius_px, py - radius_px))
 
-        # HUD
+        # 2) Scale the world surface and blit onto the window
+        win_w, win_h = window.get_size()
+        window.fill((30, 30, 30))
+
+        scaled_w = int(WORLD_WIDTH * cam_zoom)
+        scaled_h = int(WORLD_HEIGHT * cam_zoom)
+        scaled_surface = pygame.transform.smoothscale(world_surface, (scaled_w, scaled_h))
+        window.blit(scaled_surface, (int(cam_x), int(cam_y)))
+
+        # 3) HUD — drawn directly on the window (not affected by zoom/pan)
         if phase == PHASE_PLANNING:
             lines = [
                 "PHASE: PLANNING",
                 "Click a blue square to select it.",
                 "Arrow keys: plan path   Backspace: undo   C: clear",
                 "Enter: start   Space: pause   R: reset",
+                "Scroll: zoom   Right click: pan",
             ]
 
-            # NEW — Show metrics for selected entity
             for m in movables:
                 if m.selected and hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
@@ -293,7 +353,6 @@ def game():
                 "Space: pause   R: reset",
             ]
 
-            # NEW — Live fuel readout
             for i, m in enumerate(movables):
                 if hasattr(m, "metrics") and m.metrics is not None:
                     mt = m.metrics
@@ -301,7 +360,6 @@ def game():
                     lines.append(
                         f"Entity {i+1}: fuel {mt.fuel:.0f}/{mt.max_fuel:.0f} | cost {mt.total_movement_cost:.1f} | objective {objective_status}"
                     )
-                    # Added live health/fire stats to show hazard impact during the run
                     lines.append(f"health {m.health:.1f} | fire dmg {m.fire_damage_taken:.1f} | in fire {m.time_in_fire}")
 
             _render_lines(window, font, lines, x=10, y=10)
