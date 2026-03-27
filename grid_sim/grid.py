@@ -1,7 +1,7 @@
 import pygame
 from .config import *
 import random
-from .entities import Wall
+from .entities import Wall, Water, Barrier, Forest
 
 class Grid:
     def __init__(self):
@@ -15,6 +15,23 @@ class Grid:
         entity = self.entities.get((x, y))
         return entity is not None and entity.blocking
     
+    def get_terrain_modifier(self, x, y):
+        """
+        Returns the movement cost modifier for a cell.
+        Forest = 2.0, everything else = 1.0.
+        
+        Hook this into metrics.cell_movement_cost for fuel-aware pathing.
+        """
+        entity = self.entities.get((x, y))
+        if isinstance(entity, Forest):
+            return Forest.TERRAIN_MODIFIER
+        return 1.0
+
+    def is_forest(self, x, y):
+        """Check if a cell contains a forest tile."""
+        entity = self.entities.get((x, y))
+        return isinstance(entity, Forest)
+
     def add_fire(self, x, y):
         # Fire is stored separately from entities so it behaves like a hazard layer
         if 0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT:
@@ -71,6 +88,118 @@ class Grid:
                 self.add_entity(Wall(x,y))
                 placed += 1
 
+    def rand_gen_water(self, body_count=3, min_body_size=4, max_body_size=10):
+        """
+        Generate natural-looking water bodies using a flood-fill approach.
+        Each body starts at a random seed and grows outward, producing
+        organic pond/river shapes rather than uniform rectangles.
+
+        Args:
+            body_count: number of distinct water bodies to generate
+            min_body_size: minimum tiles per body
+            max_body_size: maximum tiles per body
+        """
+        for _ in range(body_count):
+            # Pick a seed cell that is not already occupied
+            attempts = 0
+            while attempts < 100:
+                sx = random.randint(2, GRID_WIDTH - 3)
+                sy = random.randint(2, GRID_HEIGHT - 3)
+                if (sx, sy) not in self.entities:
+                    break
+                attempts += 1
+            else:
+                continue
+
+            size = random.randint(min_body_size, max_body_size)
+            frontier = [(sx, sy)]
+            placed = set()
+
+            while frontier and len(placed) < size:
+                random.shuffle(frontier)
+                cx, cy = frontier.pop()
+
+                if (cx, cy) in placed or (cx, cy) in self.entities:
+                    continue
+                if not (0 <= cx < GRID_WIDTH and 0 <= cy < GRID_HEIGHT):
+                    continue
+
+                self.add_entity(Water(cx, cy))
+                placed.add((cx, cy))
+
+                # Expand to neighbors with some randomness for organic shape
+                for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+                    nx, ny = cx + dx, cy + dy
+                    if (nx, ny) not in placed and random.random() < 0.7:
+                        frontier.append((nx, ny))
+
+    def rand_gen_barriers(self, count=15):
+        """
+        Generate barrier clusters (rubble, collapsed structures).
+        Barriers form small tight groups of 2-4 tiles.
+        """
+        clusters = max(1, count // 3)
+
+        for _ in range(clusters):
+            attempts = 0
+            while attempts < 100:
+                cx = random.randint(1, GRID_WIDTH - 2)
+                cy = random.randint(1, GRID_HEIGHT - 2)
+                if (cx, cy) not in self.entities:
+                    break
+                attempts += 1
+            else:
+                continue
+
+            cluster_size = random.randint(2, 4)
+            self.add_entity(Barrier(cx, cy))
+
+            for _ in range(cluster_size - 1):
+                dx = random.randint(-1, 1)
+                dy = random.randint(-1, 1)
+                bx, by = cx + dx, cy + dy
+                if (0 <= bx < GRID_WIDTH and 0 <= by < GRID_HEIGHT
+                        and (bx, by) not in self.entities):
+                    self.add_entity(Barrier(bx, by))
+
+    def rand_gen_forest(self, patch_count=4, min_patch_size=6, max_patch_size=14):
+        """
+        Generate forest patches using organic growth similar to water bodies.
+        Forest is passable but costs extra fuel, so patches should be large
+        enough that routing through vs around is a meaningful decision.
+        """
+        for _ in range(patch_count):
+            attempts = 0
+            while attempts < 100:
+                sx = random.randint(2, GRID_WIDTH - 3)
+                sy = random.randint(2, GRID_HEIGHT - 3)
+                if (sx, sy) not in self.entities:
+                    break
+                attempts += 1
+            else:
+                continue
+
+            size = random.randint(min_patch_size, max_patch_size)
+            frontier = [(sx, sy)]
+            placed = set()
+
+            while frontier and len(placed) < size:
+                random.shuffle(frontier)
+                cx, cy = frontier.pop()
+
+                if (cx, cy) in placed or (cx, cy) in self.entities:
+                    continue
+                if not (0 <= cx < GRID_WIDTH and 0 <= cy < GRID_HEIGHT):
+                    continue
+
+                self.add_entity(Forest(cx, cy))
+                placed.add((cx, cy))
+
+                for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+                    nx, ny = cx + dx, cy + dy
+                    if (nx, ny) not in placed and random.random() < 0.65:
+                        frontier.append((nx, ny))
+
     def rand_gen_fire(self, movables, cluster_count=2, min_cluster_distance=6, min_entity_distance=6):
         # Generates clustered fire tiles while keeping them away from starting entities
         centers = []
@@ -115,7 +244,11 @@ class Grid:
                     self.add_fire(x, y)
     
     def spread_fire(self):
-        # Fire spreads from existing fire tiles into neighboring cells over time
+        """
+        Fire spreads from existing fire tiles into neighboring cells.
+        Forest tiles increase spread chance (fire catches on trees).
+        Water and barrier tiles block fire spread.
+        """
         new_fire_tiles = set(self.fire_tiles)
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         for fx, fy in list(self.fire_tiles):
@@ -126,9 +259,15 @@ class Grid:
              # Prevent fire from spreading outside the map
              if not (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT):
                 continue
-             # Fire should not spread into blocked terrain such as walls
-             if not self.is_blocked(nx, ny):
-                new_fire_tiles.add((nx, ny))
+             # Fire should not spread into blocked terrain (walls, water, barriers)
+             if self.is_blocked(nx, ny):
+                continue
+             # Forest tiles have higher ignition chance
+             if self.is_forest(nx, ny):
+                 if random.random() < 0.8:  # 80% chance to catch forest on fire
+                     new_fire_tiles.add((nx, ny))
+             else:
+                 new_fire_tiles.add((nx, ny))
                 
         self.fire_tiles = new_fire_tiles
         
