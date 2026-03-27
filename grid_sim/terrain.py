@@ -194,7 +194,7 @@ def generate_water_body(grid, center_x, center_y, size=6, movables=None, min_ent
                 continue
 
         water = Water(cx, cy)
-        grid.add_terrain(water)
+        grid.add_entity(water)
         placed.add((cx, cy))
 
         for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
@@ -238,7 +238,7 @@ def generate_forest_cluster(grid, center_x, center_y, size=8, movables=None, min
                 continue
 
         forest = Forest(ox, oy)
-        grid.add_terrain(forest)
+        grid.add_entity(forest)
         placed.add((ox, oy))
 
     return placed

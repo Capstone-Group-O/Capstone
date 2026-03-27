@@ -35,6 +35,9 @@ def game():
 
     grid = Grid()
     grid.rand_gen_walls(100)
+    grid.rand_gen_water()
+    grid.rand_gen_barriers()
+    grid.rand_gen_forest()
 
     font = pygame.font.Font(None, 26)
 

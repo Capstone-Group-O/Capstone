@@ -1,7 +1,8 @@
 import pygame
 from .config import *
 import random
-from .entities import Wall, Water, Barrier, Forest
+from .entities import Wall
+from .terrain import Water, Barrier, Forest
 
 class Grid:
     def __init__(self):
@@ -24,7 +25,7 @@ class Grid:
         """
         entity = self.entities.get((x, y))
         if isinstance(entity, Forest):
-            return Forest.TERRAIN_MODIFIER
+            return Forest.COST_MULTIPLIER
         return 1.0
 
     def is_forest(self, x, y):
