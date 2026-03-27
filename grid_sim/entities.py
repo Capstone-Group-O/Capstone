@@ -207,6 +207,18 @@ class Movable(Entity):
             self.health = 0
             self.destroyed = True
             self.selected = False
+# Movement was originally done manually this way through WASD
+    # Keeping this here in case we ever need something like it in the future
+    # def move(self, dx, dy, grid):
+    #     new_x = self.x_pos + dx
+    #     new_y = self.y_pos + dy
+    #
+    #     if 0 <= new_x < GRID_WIDTH and 0 <= new_y < GRID_HEIGHT:
+    #         if not grid.is_blocked(new_x, new_y):
+    #             del grid.entities[(self.x_pos, self.y_pos)]
+    #             self.x_pos = new_x
+    #             self.y_pos = new_y
+    #             grid.entities[(self.x_pos, self.y_pos)] = self
 
     def draw(self, window):
         # Draw planned path dots first so entity draws on top
