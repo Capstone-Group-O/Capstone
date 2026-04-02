@@ -1,6 +1,6 @@
 import pygame
 import math
-from .config import WINDOW_WIDTH, WINDOW_HEIGHT, CELL_SIZE
+from .config import CELL_SIZE
 
 
 class SimStats:
@@ -66,22 +66,24 @@ class SimStats:
         if not self._data:
             return
 
-        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        win_w, win_h = window.get_size()
+
+        overlay = pygame.Surface((win_w, win_h), pygame.SRCALPHA)
         overlay.fill((20, 20, 28, 220))
         window.blit(overlay, (0, 0))
 
         # Title
         title_font = pygame.font.SysFont(None, 36)
         title = title_font.render("SIMULATION SUMMARY", True, (90, 220, 140))
-        title_rect = title.get_rect(centerx=WINDOW_WIDTH // 2, y=20)
+        title_rect = title.get_rect(centerx=win_w // 2, y=20)
         window.blit(title, title_rect)
 
-        pygame.draw.line(window, (60, 60, 80), (40, 55), (WINDOW_WIDTH - 40, 55), 2)
+        pygame.draw.line(window, (60, 60, 80), (40, 55), (win_w - 40, 55), 2)
 
         # Draw a card for each entity
         card_y = 70
         card_margin = 20
-        card_width = WINDOW_WIDTH - card_margin * 2
+        card_width = win_w - card_margin * 2
         card_height = 220
 
         stat_font = pygame.font.SysFont(None, 22)
@@ -167,7 +169,7 @@ class SimStats:
 
         # Footer
         hint = font.render("R = reset  |  Enter = run again", True, (100, 100, 130))
-        hint_rect = hint.get_rect(centerx=WINDOW_WIDTH // 2, y=WINDOW_HEIGHT - 28)
+        hint_rect = hint.get_rect(centerx=win_w // 2, y=win_h - 28)
         window.blit(hint, hint_rect)
 
     def _draw_stat(self, window, font, name, value, x, y):
