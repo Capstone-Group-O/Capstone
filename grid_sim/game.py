@@ -11,6 +11,7 @@ from .grid import Grid
 from .entities import Movable
 from .stats import SimStats
 from .metrics import EntityMetrics, Zone, random_entity_metrics, SPEED_TIERS  # NEW
+from .generation import generate_walls
 
 PHASE_PLANNING = "PLANNING"
 PHASE_MOVING = "MOVING"
@@ -34,10 +35,6 @@ def game():
     movables = []  # Populated after zone setup below
 
     grid = Grid()
-    grid.rand_gen_walls(100)
-    grid.rand_gen_water()
-    grid.rand_gen_barriers()
-    grid.rand_gen_forest()
 
     font = pygame.font.Font(None, 26)
 
@@ -96,6 +93,15 @@ def game():
 
         movables.append(m)
         grid.add_entity(m)
+
+    # Procedurally generate walls using Perlin noise
+    entity_positions = [(m.x_pos, m.y_pos) for m in movables]
+    generate_walls(grid, start_zone, dest_zone, entity_positions)
+
+    # Add advanced terrain on top of the perlin wall layout
+    grid.rand_gen_water()
+    grid.rand_gen_barriers()
+    grid.rand_gen_forest()
 
     # Generate fire after movables are placed so fire can spawn away from entities
     grid.rand_gen_fire(
