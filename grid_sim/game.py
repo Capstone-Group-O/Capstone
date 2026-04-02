@@ -98,6 +98,11 @@ def game():
     entity_positions = [(m.x_pos, m.y_pos) for m in movables]
     generate_walls(grid, start_zone, dest_zone, entity_positions)
 
+    # Add advanced terrain on top of the perlin wall layout
+    grid.rand_gen_water()
+    grid.rand_gen_barriers()
+    grid.rand_gen_forest()
+
     # Generate fire after movables are placed so fire can spawn away from entities
     grid.rand_gen_fire(
         movables,
