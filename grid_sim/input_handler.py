@@ -29,6 +29,11 @@ class InputHandler:
             self.simulation.reset()
             return
 
+        if key == pygame.K_g:
+            if self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
+                self.simulation.regenerate_map()
+            return
+
         if key == pygame.K_RETURN:
             if self.simulation.phase in (PHASE_PLANNING, PHASE_FINISHED):
                 self.simulation.start()
@@ -59,4 +64,3 @@ class InputHandler:
     def _handle_left_click(self, mouse_pos):
         if self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
             self.simulation.handle_click(mouse_pos)
-            

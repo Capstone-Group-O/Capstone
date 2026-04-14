@@ -141,6 +141,20 @@ class SimulationManager:
         self._assign_objectives_and_metrics(randomize_metrics=True)
         self.restore_initial_fire()
 
+    def regenerate_map(self):
+        self.phase = PHASE_PLANNING
+        self.paused = False
+        self.stats.reset()
+        self.grid = Grid()
+        self.movables = []
+        self.objective_cells = []
+        self.initial_fire_positions = []
+        self._simulation_accumulator_ms = 0.0
+        self._last_fire_spread_time_ms = 0
+        self._last_frame_time_ms = pygame.time.get_ticks()
+
+        self._build_world()
+
     def start(self):
         self.phase = PHASE_MOVING
         self.paused = False

@@ -68,7 +68,7 @@ class SimulationRenderer:
             "PHASE: PLANNING",
             "Click a blue square to select it.",
             "Arrow keys: plan path   Backspace: undo   C: clear",
-            "Enter: start   Space: pause   R: reset",
+            "G: regenerate map   Enter: start   Space: pause   R: reset",
         ]
 
         for movable in simulation.movables:
