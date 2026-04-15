@@ -181,7 +181,13 @@ class SimulationManager:
 
     def _step_simulation(self):
         for movable in self.movables:
-            if hasattr(movable, "metrics") and movable.metrics is not None and movable.metrics.is_out_of_fuel:
+            has_metrics = hasattr(movable, "metrics") and movable.metrics is not None
+
+            # Stop the entity if it can no longer afford a step — check BEFORE moving
+            # so it doesn't get a free move on the tick fuel drops below the step cost.
+            if has_metrics and not movable.metrics.has_fuel_for_step():
+                if not movable.metrics.ran_out_of_fuel:
+                    movable.metrics.ran_out_of_fuel = True
                 self.stats.record_step(movable, False)
                 movable.apply_fire_damage(self.grid)
                 continue
@@ -190,7 +196,7 @@ class SimulationManager:
             movable.apply_fire_damage(self.grid)
             self.stats.record_step(movable, moved)
 
-            if moved and hasattr(movable, "metrics") and movable.metrics is not None:
+            if moved and has_metrics:
                 movable.metrics.burn_fuel_for_step()
                 movable.metrics.check_in_zone(movable.x_pos, movable.y_pos)
                 self._update_proximity(movable)
@@ -210,7 +216,7 @@ class SimulationManager:
 
     def _entity_finished(self, movable: Movable) -> bool:
         metrics = getattr(movable, "metrics", None)
-        return movable.is_done() or (metrics is not None and metrics.is_out_of_fuel)
+        return movable.is_done() or (metrics is not None and (metrics.is_out_of_fuel or metrics.ran_out_of_fuel))
 
     def selected_movables(self) -> List[Movable]:
         return [m for m in self.movables if m.selected]

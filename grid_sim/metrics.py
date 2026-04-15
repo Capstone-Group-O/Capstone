@@ -104,6 +104,7 @@ class EntityMetrics:
     total_steps: int = 0
     total_movement_cost: float = 0.0   # normalized cost accumulator
     detected_entities: List = field(default_factory=list)
+    ran_out_of_fuel: bool = False
 
     # Destination zone tracking
     destination_zone: Optional[Zone] = None
@@ -118,7 +119,12 @@ class EntityMetrics:
 
     @property
     def is_out_of_fuel(self) -> bool:
-        return self.fuel <= 0
+        return self.fuel <= 0 or self.ran_out_of_fuel
+
+    def has_fuel_for_step(self) -> bool:
+        """Returns True if the entity has enough fuel to pay for one more step."""
+        tier = self.get_speed_tier()
+        return self.fuel >= tier.fuel_per_step
 
     def get_speed_tier(self) -> SpeedTier:
         return SPEED_TIERS.get(self.speed_tier, SPEED_TIERS["medium"])
@@ -177,7 +183,7 @@ class EntityMetrics:
 # ──────────────────────────────────────────────
 
 def random_entity_metrics(
-    fuel_range: Tuple[float, float] = (60.0, 120.0),
+    fuel_range: Tuple[float, float] = (150.0, 200.0),
     proximity_range: Tuple[int, int] = (2, 5),
     speed_tier: Optional[str] = None,
 ) -> EntityMetrics:
