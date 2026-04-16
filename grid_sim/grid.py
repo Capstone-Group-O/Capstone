@@ -8,6 +8,7 @@ class Grid:
     def __init__(self):
         self.entities = {}  #{(x, y): entity}
         self.fire_tiles = set() # Mark entity as destroyed when health is depleted
+        self.objective_cells = set()
 
     def add_entity(self, entity):
         self.entities[(entity.x_pos, entity.y_pos)] = entity
@@ -241,7 +242,7 @@ class Grid:
 
                 if not (0 <= x < GRID_WIDTH and 0 <= y < GRID_HEIGHT):
                     continue
-                if (x, y) not in self.entities:
+                if (x, y) not in self.entities and (x, y) not in self.objective_cells:
                     self.add_fire(x, y)
     
     def spread_fire(self):
@@ -261,7 +262,7 @@ class Grid:
              if not (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT):
                 continue
              # Fire should not spread into blocked terrain (walls, water, barriers)
-             if self.is_blocked(nx, ny):
+             if self.is_blocked(nx, ny) or (nx, ny) in self.objective_cells:
                 continue
              # Forest tiles have higher ignition chance
              if self.is_forest(nx, ny):
