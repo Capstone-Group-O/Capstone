@@ -60,8 +60,13 @@ class SimulationManager:
         self.grid.rand_gen_forest()
 
         self.objective_cells = self._build_objective_cells()
+
+        # Force objective zone to override terrain
+        for cell in self.dest_zone.all_cells():
+            self.grid.entities.pop(cell, None)
         self._assign_objectives_and_metrics(randomize_metrics=False)
 
+        self.grid.objective_cells = set(self.dest_zone.all_cells())
         self.grid.rand_gen_fire(
             self.movables,
             cluster_count=2,
