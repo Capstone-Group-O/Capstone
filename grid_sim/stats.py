@@ -162,6 +162,11 @@ class SimStats:
                 fill_w = int(bar_w * (m.fuel_pct / 100.0))
                 fuel_color = (90, 220, 140) if m.fuel_pct > 50 else (255, 220, 120) if m.fuel_pct > 25 else (240, 120, 120)
                 pygame.draw.rect(window, fuel_color, (bar_x, bar_y, fill_w, bar_h), border_radius=3)
+
+                # Out-of-fuel indicator
+                if m.ran_out_of_fuel:
+                    oof_surf = stat_font.render("OUT OF FUEL", True, (240, 120, 120))
+                    window.blit(oof_surf, (bar_x, bar_y + bar_h + 6))
             else:
                 self._draw_stat(window, stat_font, "Metrics", "N/A", col3_x, row_y)
 
