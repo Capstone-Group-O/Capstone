@@ -6,14 +6,15 @@ from .renderer import SimulationRenderer
 from .simulation import SimulationManager
 
 
-def game():
+def game(simulation=None):
     pygame.init()
 
     window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Test Sim")
 
     clock = pygame.time.Clock()
-    simulation = SimulationManager()
+    if simulation is None:
+        simulation = SimulationManager()
     input_handler = InputHandler(simulation)
     renderer = SimulationRenderer(window)
 
