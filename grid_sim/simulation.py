@@ -7,6 +7,7 @@ import pygame
 from .entities import Movable
 from .generation import generate_walls
 from .grid import Grid
+from .map_runtime import build_runtime_world
 from .metrics import Zone, random_entity_metrics
 from .phases import PHASE_FINISHED, PHASE_MOVING, PHASE_PLANNING
 from .stats import SimStats
@@ -14,8 +15,6 @@ from .stats import SimStats
 
 @dataclass(frozen=True)
 class SimulationTiming:
-    # Simulation updates are decoupled from rendering, so movement speed
-    # is controlled here rather than by the display framerate
     simulation_tick_fps: int = 7
     fire_tick_ms: int = 400
 
@@ -25,7 +24,7 @@ class SimulationTiming:
 
 
 class SimulationManager:
-    def __init__(self):
+    def __init__(self, map_data=None):
         self.grid = Grid()
         self.stats = SimStats()
         self.timing = SimulationTiming()
@@ -33,6 +32,7 @@ class SimulationManager:
         self.phase = PHASE_PLANNING
         self.paused = False
         self.running = True
+        self.requested_action = None
 
         self.start_zone = Zone("Start", x=1, y=1, width=4, height=4, color=(40, 80, 120))
         self.dest_zone = Zone("Objective", x=24, y=24, width=4, height=4, color=(80, 120, 40))
@@ -41,13 +41,14 @@ class SimulationManager:
         self.objective_cells: List[Tuple[int, int]] = []
         self.initial_fire_positions: List[Tuple[int, int]] = []
 
-        # Tracks elapsed real time so fixed simulation steps can run independently
-        # of however often the render loop happens to execute.
         self._simulation_accumulator_ms = 0.0
         self._last_frame_time_ms = pygame.time.get_ticks()
         self._last_fire_spread_time_ms = 0
 
-        self._build_world()
+        if map_data is None:
+            self._build_world()
+        else:
+            self._load_map_world(map_data)
 
     def _build_world(self):
         self._spawn_movables()
@@ -60,27 +61,30 @@ class SimulationManager:
         self.grid.rand_gen_forest()
 
         self.objective_cells = self._build_objective_cells()
-
-        # Force objective zone to override terrain
-        for cell in self.dest_zone.all_cells():
-            self.grid.entities.pop(cell, None)
         self._assign_objectives_and_metrics(randomize_metrics=False)
 
-        self.grid.objective_cells = set(self.dest_zone.all_cells())
         self.grid.rand_gen_fire(
             self.movables,
             cluster_count=2,
             min_cluster_distance=8,
             min_entity_distance=7,
         )
-        # Save the initial fire pattern so reset/start can restore the same scenario.
         self.initial_fire_positions = list(self.grid.fire_tiles)
+
+    def _load_map_world(self, map_data):
+        runtime = build_runtime_world(map_data)
+        self.grid = runtime.grid
+        self.movables = runtime.movables
+        self.start_zone = runtime.start_zone
+        self.dest_zone = runtime.dest_zone
+        self.objective_cells = runtime.objective_cells
+        self.initial_fire_positions = list(runtime.initial_fire_positions)
+        self._assign_objectives_and_metrics(randomize_metrics=False)
 
     def _spawn_movables(self, count: int = 2):
         occupied = set()
         for _ in range(count):
             sx, sy = self.start_zone.random_point()
-            # Prevent overlapping spawns inside the start zone.
             while (sx, sy) in occupied or self.grid.is_blocked(sx, sy):
                 sx, sy = self.start_zone.random_point()
 
@@ -122,7 +126,6 @@ class SimulationManager:
             if randomize_metrics or not hasattr(movable, "metrics") or movable.metrics is None:
                 movable.metrics = random_entity_metrics()
 
-            # Each entity gets one assigned objective cell inside the destination zone
             movable.metrics.destination_zone = self.dest_zone
             movable.metrics.objective_cell = available.pop() if available else None
             movable.metrics.reached_destination = False
@@ -145,6 +148,23 @@ class SimulationManager:
 
         self._assign_objectives_and_metrics(randomize_metrics=True)
         self.restore_initial_fire()
+
+    def regenerate_map(self):
+        self.phase = PHASE_PLANNING
+        self.paused = False
+        self.stats.reset()
+        self.grid = Grid()
+        self.movables = []
+        self.objective_cells = []
+        self.initial_fire_positions = []
+        self._simulation_accumulator_ms = 0.0
+        self._last_fire_spread_time_ms = 0
+        self._last_frame_time_ms = pygame.time.get_ticks()
+        self._build_world()
+
+    def request_back_to(self, action: str):
+        self.requested_action = action
+        self.running = False
 
     def start(self):
         self.phase = PHASE_MOVING
@@ -173,9 +193,6 @@ class SimulationManager:
             return
 
         self._simulation_accumulator_ms += max(delta_ms, 0)
-
-        # Run fixed size simulation steps so the sim stays consistent even if
-        # rendering speeds up or slows down
         while self._simulation_accumulator_ms >= self.timing.simulation_step_ms:
             self._step_simulation()
             self._simulation_accumulator_ms -= self.timing.simulation_step_ms
@@ -186,13 +203,7 @@ class SimulationManager:
 
     def _step_simulation(self):
         for movable in self.movables:
-            has_metrics = hasattr(movable, "metrics") and movable.metrics is not None
-
-            # Stop the entity if it can no longer afford a step — check BEFORE moving
-            # so it doesn't get a free move on the tick fuel drops below the step cost.
-            if has_metrics and not movable.metrics.has_fuel_for_step():
-                if not movable.metrics.ran_out_of_fuel:
-                    movable.metrics.ran_out_of_fuel = True
+            if hasattr(movable, "metrics") and movable.metrics is not None and movable.metrics.is_out_of_fuel:
                 self.stats.record_step(movable, False)
                 movable.apply_fire_damage(self.grid)
                 continue
@@ -201,7 +212,7 @@ class SimulationManager:
             movable.apply_fire_damage(self.grid)
             self.stats.record_step(movable, moved)
 
-            if moved and has_metrics:
+            if moved and hasattr(movable, "metrics") and movable.metrics is not None:
                 movable.metrics.burn_fuel_for_step()
                 movable.metrics.check_in_zone(movable.x_pos, movable.y_pos)
                 self._update_proximity(movable)
@@ -221,7 +232,7 @@ class SimulationManager:
 
     def _entity_finished(self, movable: Movable) -> bool:
         metrics = getattr(movable, "metrics", None)
-        return movable.is_done() or (metrics is not None and (metrics.is_out_of_fuel or metrics.ran_out_of_fuel))
+        return movable.is_done() or (metrics is not None and metrics.is_out_of_fuel)
 
     def selected_movables(self) -> List[Movable]:
         return [m for m in self.movables if m.selected]

@@ -1,5 +1,6 @@
 import pygame
 
+from .config import BACK_BUTTON_RECT, WINDOW_WIDTH
 from .phases import PHASE_FINISHED, PHASE_PLANNING
 
 
@@ -21,12 +22,21 @@ class InputHandler:
                 self._handle_left_click(event.pos)
 
     def _handle_keydown(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_b):
+            self.simulation.request_back_to("launcher")
+            return
+
         if key == pygame.K_SPACE:
             self.simulation.toggle_pause()
             return
 
         if key == pygame.K_r:
             self.simulation.reset()
+            return
+
+        if key == pygame.K_g:
+            if self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
+                self.simulation.regenerate_map()
             return
 
         if key == pygame.K_RETURN:
@@ -57,6 +67,11 @@ class InputHandler:
             self.simulation.plan_selected_step(dx, dy)
 
     def _handle_left_click(self, mouse_pos):
-        if self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
+        x, y = mouse_pos
+        bx, by, bw, bh = BACK_BUTTON_RECT
+        if bx <= x <= bx + bw and by <= y <= by + bh:
+            self.simulation.request_back_to("launcher")
+            return
+
+        if x < WINDOW_WIDTH and self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
             self.simulation.handle_click(mouse_pos)
-            

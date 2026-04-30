@@ -1,22 +1,24 @@
 import pygame
 
-from .config import FPS, WINDOW_HEIGHT, WINDOW_WIDTH
+from .config import APP_WINDOW_HEIGHT, APP_WINDOW_WIDTH, FPS
 from .input_handler import InputHandler
 from .renderer import SimulationRenderer
 from .simulation import SimulationManager
 
 
-def game(simulation=None):
+def game(simulation=None, return_action="launcher"):
     pygame.init()
 
-    window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("Test Sim")
+    window = pygame.display.set_mode((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT))
+    pygame.display.set_caption("SWORD Simulation")
 
     clock = pygame.time.Clock()
     if simulation is None:
         simulation = SimulationManager()
     input_handler = InputHandler(simulation)
     renderer = SimulationRenderer(window)
+
+    result = {"action": return_action}
 
     while simulation.running:
         input_handler.handle_events(pygame.event.get())
@@ -25,4 +27,8 @@ def game(simulation=None):
         pygame.display.flip()
         clock.tick(FPS)
 
+    if simulation.requested_action is not None:
+        result = {"action": simulation.requested_action}
+
     pygame.quit()
+    return result
