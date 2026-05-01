@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Tuple
 
 import pygame
@@ -109,7 +110,10 @@ class MapEditor:
         self._action_buttons_bottom = 0
 
         self.save_dialog_open = False
-        self.save_title = self.map_data.metadata.get("title", self.map_data.name if self.map_data.name != "custom_map" else "")
+        self.save_title = self.map_data.metadata.get(
+            "title",
+            self.map_data.name if self.map_data.name != "custom_map" else "",
+        )
         self.save_description = self.map_data.metadata.get("description", "")
         self.active_field = "title"
         self.dialog_error = ""
@@ -256,9 +260,21 @@ class MapEditor:
         if len(description.split()) > 50:
             self.dialog_error = "Description must be 50 words or fewer."
             return
-        path = save_custom_mission(self.map_data, title, description)
+
+        existing_path = None
+        current_path = self.map_data.metadata.get("mission_path")
+        if current_path:
+            existing_path = Path(current_path)
+
+        path = save_custom_mission(
+            self.map_data,
+            title,
+            description,
+            existing_path=existing_path,
+        )
         self.map_data.metadata["title"] = title
         self.map_data.metadata["description"] = " ".join(description.split()[:50])
+        self.map_data.metadata["mission_path"] = str(path)
         self.map_data.name = title
         self.status = f"Saved mission: {path.stem}"
         self.save_dialog_open = False
@@ -571,12 +587,7 @@ class MapEditor:
         label_title = self.small_font.render("Title", True, TEXT)
         window.blit(label_title, (box.x + 16, box.y + 56))
         self.title_rect = pygame.Rect(box.x + 16, box.y + 78, box.w - 32, 32)
-        pygame.draw.rect(
-            window,
-            FIELD_BG,
-            self.title_rect,
-            border_radius=6,
-        )
+        pygame.draw.rect(window, FIELD_BG, self.title_rect, border_radius=6)
         pygame.draw.rect(
             window,
             FIELD_ACTIVE if self.active_field == "title" else MODAL_BORDER,

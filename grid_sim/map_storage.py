@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from .map_data import MapData, blank_map
 
@@ -36,7 +36,12 @@ def load_or_create_default_map() -> MapData:
     return blank_map()
 
 
-def save_custom_mission(map_data: MapData, title: str, description: str) -> Path:
+def save_custom_mission(
+    map_data: MapData,
+    title: str,
+    description: str,
+    existing_path: Path | None = None,
+) -> Path:
     ensure_missions_dir()
 
     trimmed_title = title.strip() or "Untitled Mission"
@@ -51,10 +56,29 @@ def save_custom_mission(map_data: MapData, title: str, description: str) -> Path
     payload["metadata"]["title"] = trimmed_title
     payload["metadata"]["description"] = trimmed_description
 
-    target = _mission_path_from_title(trimmed_title)
+    current_path = existing_path
+    if current_path is None:
+        current_meta_path = payload["metadata"].get("mission_path")
+        if current_meta_path:
+            current_path = Path(current_meta_path)
+
+    # Key behavior:
+    # - existing mission => overwrite same file
+    # - new mission => create a new file
+    if current_path is not None:
+        target = Path(current_path)
+    else:
+        target = _mission_path_from_title(trimmed_title)
+
+    payload["metadata"]["mission_path"] = str(target)
+
     with target.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
 
+    map_data.metadata["title"] = trimmed_title
+    map_data.metadata["description"] = trimmed_description
+    map_data.metadata["mission_path"] = str(target)
+    map_data.name = trimmed_title
     return target
 
 
@@ -87,4 +111,14 @@ def list_custom_missions() -> List[Dict[str, object]]:
 def load_custom_mission(path: Path) -> MapData:
     with path.open("r", encoding="utf-8") as fh:
         data = json.load(fh)
-    return MapData.from_dict(data)
+    mission = MapData.from_dict(data)
+    mission.metadata["mission_path"] = str(path)
+    return mission
+
+
+def delete_custom_mission(path: Path) -> bool:
+    try:
+        Path(path).unlink()
+        return True
+    except FileNotFoundError:
+        return False

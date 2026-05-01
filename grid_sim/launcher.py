@@ -2,7 +2,7 @@
 import pygame
 
 from .config import FPS, WINDOW_HEIGHT, WINDOW_WIDTH
-from .map_storage import list_custom_missions, load_custom_mission
+from .map_storage import delete_custom_mission, list_custom_missions, load_custom_mission
 from .renderer import SimulationRenderer
 from .simulation import SimulationManager
 
@@ -22,6 +22,9 @@ BUTTON = (40, 48, 58)
 BUTTON_HOVER = (58, 68, 82)
 CARD = (20, 26, 34)
 CARD_HOVER = (28, 34, 44)
+ICON_BG = (30, 38, 48)
+ICON_HOVER = (48, 58, 72)
+DELETE_ACCENT = (170, 70, 70)
 
 TABS = [
     ("START SIM", "simulation"),
@@ -37,6 +40,8 @@ class LauncherState:
         self.selected = 0
         self.scroll_y = 0
         self.mission_buttons = []
+        self.mission_edit_buttons = []
+        self.mission_delete_buttons = []
         self.action_button = None
 
 
@@ -82,6 +87,16 @@ def _draw_button(window, font, rect, label):
     window.blit(surf, surf.get_rect(center=rect.center))
 
 
+def _draw_icon_button(window, font, rect, label, delete=False):
+    hover = rect.collidepoint(pygame.mouse.get_pos())
+    fill = ICON_HOVER if hover else ICON_BG
+    border = DELETE_ACCENT if delete else DIVIDER
+    pygame.draw.rect(window, fill, rect, border_radius=6)
+    pygame.draw.rect(window, border, rect, 1, border_radius=6)
+    surf = font.render(label, True, TEXT)
+    window.blit(surf, surf.get_rect(center=rect.center))
+
+
 def _wrap_text(font, text, max_width):
     words = text.split()
     if not words:
@@ -106,6 +121,8 @@ def _draw_mission_list(window, body_font, small_font, state: LauncherState):
     window.set_clip(viewport)
 
     state.mission_buttons = []
+    state.mission_edit_buttons = []
+    state.mission_delete_buttons = []
     content_y = viewport.y - state.scroll_y
     content_bottom = content_y
 
@@ -124,7 +141,7 @@ def _draw_mission_list(window, body_font, small_font, state: LauncherState):
                 mission.get("description") or "No description.",
                 viewport.width - 24,
             )
-            card_h = 72 + len(desc_lines) * 16
+            card_h = 76 + len(desc_lines) * 16
             card = pygame.Rect(viewport.x, content_y, viewport.width, card_h)
             hover = card.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(window, CARD_HOVER if hover else CARD, card, border_radius=10)
@@ -133,7 +150,15 @@ def _draw_mission_list(window, body_font, small_font, state: LauncherState):
             title_surf = body_font.render(mission.get("title", "Untitled Mission"), True, ACCENT)
             window.blit(title_surf, (card.x + 12, card.y + 10))
 
-            yy = card.y + 34
+            icon_size = 24
+            delete_rect = pygame.Rect(card.right - 12 - icon_size, card.y + 10, icon_size, icon_size)
+            edit_rect = pygame.Rect(delete_rect.x - 6 - icon_size, card.y + 10, icon_size, icon_size)
+            _draw_icon_button(window, small_font, edit_rect, "E")
+            _draw_icon_button(window, small_font, delete_rect, "X", delete=True)
+            state.mission_edit_buttons.append((edit_rect, mission["path"]))
+            state.mission_delete_buttons.append((delete_rect, mission["path"]))
+
+            yy = card.y + 40
             for line in desc_lines:
                 surf = small_font.render(line, True, TEXT)
                 window.blit(surf, (card.x + 12, yy))
@@ -195,9 +220,7 @@ def _draw_panel(window, title_font, body_font, small_font, state: LauncherState)
         ]
         _render_multiline(window, body_font, lines, 16, TAB_H + 68)
     else:
-        lines = [
-            "Exit the application.",
-        ]
+        lines = ["Exit the application."]
         _render_multiline(window, body_font, lines, 16, TAB_H + 68)
         state.action_button = (pygame.Rect(16, TOTAL_H - 54, PANEL_W - 32, 34), "quit")
         _draw_button(window, body_font, state.action_button[0], "Quit application")
@@ -294,14 +317,24 @@ def launch():
                             state.scroll_y = 0
                     else:
                         if TABS[state.selected][1] == "missions":
-                            for rect, path in state.mission_buttons:
+                            for rect, path in state.mission_delete_buttons:
                                 if rect.collidepoint(event.pos):
-                                    pygame.quit()
-                                    return {
-                                        "action": "simulation",
-                                        "simulation": SimulationManager(load_custom_mission(path)),
-                                        "return_action": "launcher",
-                                    }
+                                    delete_custom_mission(path)
+                                    state.scroll_y = max(0, state.scroll_y - 1)
+                                    break
+                            else:
+                                for rect, path in state.mission_edit_buttons:
+                                    if rect.collidepoint(event.pos):
+                                        pygame.quit()
+                                        return {"action": "editor", "map_data": load_custom_mission(path)}
+                                for rect, path in state.mission_buttons:
+                                    if rect.collidepoint(event.pos):
+                                        pygame.quit()
+                                        return {
+                                            "action": "simulation",
+                                            "simulation": SimulationManager(load_custom_mission(path)),
+                                            "return_action": "launcher",
+                                        }
                         if state.action_button and state.action_button[0].collidepoint(event.pos):
                             action = state.action_button[1]
                             pygame.quit()
