@@ -388,9 +388,6 @@ def launch(editor_map: Optional[MapData] = None):
                                         pygame.quit()
                                         return {"action": "editor", "map_data": load_custom_mission(path)}
                                 for rect, path, card in state.mission_buttons:
-                                    if card.collidepoint(event.pos):
-                                        state.selected_mission_path = path
-                                        break
                                     if rect.collidepoint(event.pos):
                                         pygame.quit()
                                         return {
@@ -398,6 +395,9 @@ def launch(editor_map: Optional[MapData] = None):
                                             "simulation": SimulationManager(load_custom_mission(path)),
                                             "return_action": "launcher",
                                         }
+                                    if card.collidepoint(event.pos):
+                                        state.selected_mission_path = path
+                                        break
 
                         if state.action_button and state.action_button[0].collidepoint(event.pos):
                             action = state.action_button[1]
