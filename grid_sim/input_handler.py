@@ -1,3 +1,4 @@
+# input_handler.py
 import pygame
 
 from .phases import PHASE_FINISHED, PHASE_PLANNING
@@ -21,6 +22,15 @@ class InputHandler:
                 self._handle_left_click(event.pos)
 
     def _handle_keydown(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_b):
+            target = getattr(self.simulation, "back_target", "launcher")
+            if hasattr(self.simulation, "request_back_to"):
+                self.simulation.request_back_to(target)
+            else:
+                self.simulation.requested_action = target
+                self.simulation.stop()
+            return
+
         if key == pygame.K_SPACE:
             self.simulation.toggle_pause()
             return
@@ -57,6 +67,10 @@ class InputHandler:
             self.simulation.plan_selected_step(dx, dy)
 
     def _handle_left_click(self, mouse_pos):
+        if hasattr(self.simulation, "handle_panel_click"):
+            panel_result = self.simulation.handle_panel_click(mouse_pos)
+            if panel_result:
+                return
+
         if self.simulation.phase == PHASE_PLANNING and not self.simulation.paused:
             self.simulation.handle_click(mouse_pos)
-            
