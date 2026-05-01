@@ -27,7 +27,7 @@ ICON_HOVER = (48, 58, 72)
 DELETE_ACCENT = (170, 70, 70)
 
 TABS = [
-    ("START SIM", "simulation"),
+    ("RANDOMIZED SIM", "simulation"),
     ("CUSTOM MISSIONS", "missions"),
     ("MAP EDITOR", "editor"),
     ("QUIT", "quit"),
@@ -233,7 +233,8 @@ def _draw_panel(window, title_font, body_font, small_font, state: LauncherState)
         lines = [
             "Launch the randomized simulation.",
             "",
-            "Use this for quick sandbox runs without selecting a saved mission.",
+            "This simulator was built to put operators in scenarios where terrain and hazards"
+            " are randomized for each run.",
         ]
         _render_multiline(window, body_font, lines, 16, TAB_H + 68, max_width=panel_text_width)
         state.action_button = (pygame.Rect(16, TOTAL_H - 54, PANEL_W - 32, 34), "simulation")
