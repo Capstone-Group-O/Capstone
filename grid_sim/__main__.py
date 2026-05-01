@@ -1,3 +1,4 @@
+# __main__.py
 from .game import game
 from .launcher import launch
 from .map_editor import run_map_editor
@@ -20,6 +21,8 @@ def main():
             if simulation is None:
                 simulation = SimulationManager()
             return_action = next_action.get("return_action", "launcher")
+            if next_action.get("map_data") is not None:
+                simulation.editor_map_data = next_action.get("map_data")
             next_action = game(simulation, return_action=return_action)
             continue
 
@@ -30,9 +33,11 @@ def main():
             if editor_result.map_data is not None:
                 editor_map = editor_result.map_data
             if editor_result.action == "test" and editor_result.map_data is not None:
+                simulation = SimulationManager(editor_result.map_data)
+                simulation.editor_map_data = editor_result.map_data
                 next_action = {
                     "action": "simulation",
-                    "simulation": SimulationManager(editor_result.map_data),
+                    "simulation": simulation,
                     "return_action": "editor",
                     "map_data": editor_result.map_data,
                 }

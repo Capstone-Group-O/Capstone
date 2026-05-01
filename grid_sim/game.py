@@ -1,3 +1,4 @@
+# game.py
 import pygame
 
 from .config import APP_WINDOW_HEIGHT, APP_WINDOW_WIDTH, FPS
@@ -10,11 +11,12 @@ def game(simulation=None, return_action="launcher"):
     pygame.init()
 
     window = pygame.display.set_mode((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT))
-    pygame.display.set_caption("SWORD Simulation")
+    pygame.display.set_caption("Test Sim")
 
     clock = pygame.time.Clock()
     if simulation is None:
         simulation = SimulationManager()
+    simulation.back_target = return_action
     input_handler = InputHandler(simulation)
     renderer = SimulationRenderer(window)
 
@@ -28,7 +30,13 @@ def game(simulation=None, return_action="launcher"):
         clock.tick(FPS)
 
     if simulation.requested_action is not None:
-        result = {"action": simulation.requested_action}
+        if simulation.requested_action == "editor":
+            result = {
+                "action": "editor",
+                "map_data": getattr(simulation, "editor_map_data", None),
+            }
+        else:
+            result = {"action": simulation.requested_action}
 
     pygame.quit()
     return result

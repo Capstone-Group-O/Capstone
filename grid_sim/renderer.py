@@ -1,3 +1,4 @@
+# renderer.py
 import pygame
 
 from .config import (
@@ -5,6 +6,7 @@ from .config import (
     BACK_BUTTON_RECT,
     BG_COLOR,
     BUTTON_BG_COLOR,
+    BUTTON_HOVER_COLOR,
     BUTTON_TEXT_COLOR,
     CELL_SIZE,
     HUD_PANEL_WIDTH,
@@ -42,7 +44,7 @@ class SimulationRenderer:
 
         self._draw_sidebar_background()
         self._draw_hud(simulation)
-        self._draw_back_button()
+        self._draw_back_button(simulation)
 
         if simulation.paused and simulation.phase != PHASE_FINISHED:
             self._render_lines(["PAUSED"], x=WINDOW_WIDTH + 12, y=180, color=(255, 80, 80))
@@ -55,11 +57,14 @@ class SimulationRenderer:
         title = self.font.render("SIM INFO", True, PANEL_ACCENT_COLOR)
         self.window.blit(title, (panel_x + 12, 10))
 
-    def _draw_back_button(self):
+    def _draw_back_button(self, simulation):
         rect = pygame.Rect(BACK_BUTTON_RECT)
-        pygame.draw.rect(self.window, BUTTON_BG_COLOR, rect, border_radius=8)
+        hover = rect.collidepoint(pygame.mouse.get_pos())
+        pygame.draw.rect(self.window, BUTTON_HOVER_COLOR if hover else BUTTON_BG_COLOR, rect, border_radius=8)
         pygame.draw.rect(self.window, PANEL_DIVIDER_COLOR, rect, 1, border_radius=8)
-        text = self.small_font.render("Back to launcher", True, BUTTON_TEXT_COLOR)
+        target = getattr(simulation, "back_target", "launcher")
+        label = "Back to editor" if target == "editor" else "Back to launcher"
+        text = self.small_font.render(label, True, BUTTON_TEXT_COLOR)
         self.window.blit(text, text.get_rect(center=rect.center))
 
     def _draw_zones(self, simulation, surface):

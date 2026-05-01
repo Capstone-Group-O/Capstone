@@ -1,14 +1,17 @@
+# launcher.py
 import pygame
 
 from .config import FPS, WINDOW_HEIGHT, WINDOW_WIDTH
 from .renderer import SimulationRenderer
 from .simulation import SimulationManager
 
+# ── Layout ────────────────────────────────────────────────────────────────────
 TAB_H = 34
 PANEL_W = 300
 TOTAL_W = PANEL_W + WINDOW_WIDTH
 TOTAL_H = TAB_H + WINDOW_HEIGHT
 
+# ── Palette ───────────────────────────────────────────────────────────────────
 BG = (10, 14, 20)
 PANEL = (13, 19, 27)
 ACCENT = (34, 197, 94)
@@ -16,6 +19,8 @@ DIM = (65, 90, 78)
 DIVIDER = (26, 40, 32)
 TEXT = (180, 210, 195)
 SUBTEXT = (120, 145, 132)
+BUTTON = (40, 48, 58)
+BUTTON_HOVER = (58, 68, 82)
 
 TABS = [
     ("START SIM", "simulation"),
@@ -59,6 +64,14 @@ def _render_multiline(window, font, lines, x, y, color=TEXT, line_gap=6):
     return yy
 
 
+def _draw_action_button(window, font, rect, label):
+    hover = rect.collidepoint(pygame.mouse.get_pos())
+    pygame.draw.rect(window, BUTTON_HOVER if hover else BUTTON, rect, border_radius=8)
+    pygame.draw.rect(window, DIVIDER, rect, 1, border_radius=8)
+    surf = font.render(label, True, TEXT)
+    window.blit(surf, surf.get_rect(center=rect.center))
+
+
 def _draw_panel(window, title_font, body_font, small_font, selected):
     r = pygame.Rect(0, TAB_H, PANEL_W, WINDOW_HEIGHT)
     pygame.draw.rect(window, PANEL, r)
@@ -67,49 +80,67 @@ def _draw_panel(window, title_font, body_font, small_font, selected):
     label, action = TABS[selected]
     title = title_font.render(label, True, ACCENT)
     window.blit(title, (20, TAB_H + 22))
+
     pygame.draw.line(window, DIVIDER, (20, TAB_H + 58), (PANEL_W - 20, TAB_H + 58))
+
+    button_rect = None
 
     if action == "simulation":
         lines = [
             "Launch the randomized simulation.",
             "",
-            "Inside the sim, the right panel",
-            "contains status text and a Back",
-            "button that returns here.",
-            "",
-            "Click this tab again, or press",
-            "Enter, to launch.",
+            "Controls inside sim:",
+            "• Enter to start",
+            "• Arrow keys to plan",
+            "• Backspace undo / C clear",
+            "• Space pause / R reset",
+            "• Esc or B returns here",
         ]
+        button_rect = pygame.Rect(20, TOTAL_H - 86, PANEL_W - 40, 38)
+        button_label = "Start randomized sim"
     elif action == "editor":
         lines = [
             "Open the custom map editor.",
             "",
-            "Inside the editor, the right panel",
-            "contains tool/help text and a",
-            "Back button that returns here.",
-            "",
-            "Click this tab again, or press",
-            "Enter, to open it.",
+            "Available there:",
+            "• paint terrain and hazards",
+            "• place movables and objectives",
+            "• define start / destination zones",
+            "• save, load, and test maps",
+            "• Esc or B returns here",
         ]
+        button_rect = pygame.Rect(20, TOTAL_H - 86, PANEL_W - 40, 38)
+        button_label = "Open map editor"
     elif action == "about":
         lines = [
             "SWORD launcher",
             "",
-            "This keeps the tabbed launcher",
-            "style while using the newer",
-            "navigation flow.",
+            "This tabbed menu keeps the",
+            "older layout style while using",
+            "the newer navigation model.",
+            "",
+            "START SIM launches the sim.",
+            "MAP EDITOR opens the editor.",
+            "Esc in either screen returns here.",
         ]
     else:
         lines = [
             "Exit the application.",
             "",
-            "Click this tab again, or press",
-            "Enter, to quit.",
+            "Use the button below to quit.",
         ]
+        button_rect = pygame.Rect(20, TOTAL_H - 86, PANEL_W - 40, 38)
+        button_label = "Quit application"
 
     bottom_y = _render_multiline(window, body_font, lines, 20, TAB_H + 74)
-    hint = small_font.render("Left/Right switches tabs.", True, SUBTEXT)
-    window.blit(hint, (20, min(bottom_y + 20, TOTAL_H - 32)))
+    hint = small_font.render("Press Enter or click active tab to confirm.", True, SUBTEXT)
+    hint_y = min(bottom_y + 16, TOTAL_H - 112)
+    window.blit(hint, (20, hint_y))
+
+    if button_rect is not None:
+        _draw_action_button(window, body_font, button_rect, button_label)
+
+    return button_rect, action
 
 
 def launch():
@@ -139,6 +170,11 @@ def launch():
         mx, my = pygame.mouse.get_pos()
         hovered = min(mx // tab_w, len(TABS) - 1) if my < TAB_H else -1
 
+        window.fill(BG)
+        window.blit(preview, (PANEL_W, TAB_H))
+        button_rect, selected_action = _draw_panel(window, title_font, body_font, small_font, selected)
+        _draw_tab_bar(window, tab_font, hovered, selected)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -153,32 +189,47 @@ def launch():
                 elif event.key == pygame.K_RIGHT:
                     selected = (selected + 1) % len(TABS)
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                    _, action = TABS[selected]
                     pygame.quit()
-                    if action == "simulation":
-                        return {"action": "simulation", "simulation": SimulationManager(), "return_action": "launcher"}
-                    if action == "editor":
+                    if selected_action == "simulation":
+                        return {
+                            "action": "simulation",
+                            "simulation": SimulationManager(),
+                            "return_action": "launcher",
+                        }
+                    if selected_action == "editor":
                         return {"action": "editor", "map_data": None}
-                    if action == "quit":
+                    if selected_action == "quit":
                         return {"action": "quit"}
 
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and my < TAB_H:
-                clicked = min(mx // tab_w, len(TABS) - 1)
-                if clicked == selected:
-                    _, action = TABS[selected]
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if my < TAB_H:
+                    clicked = min(mx // tab_w, len(TABS) - 1)
+                    if clicked == selected:
+                        pygame.quit()
+                        if selected_action == "simulation":
+                            return {
+                                "action": "simulation",
+                                "simulation": SimulationManager(),
+                                "return_action": "launcher",
+                            }
+                        if selected_action == "editor":
+                            return {"action": "editor", "map_data": None}
+                        if selected_action == "quit":
+                            return {"action": "quit"}
+                    else:
+                        selected = clicked
+                elif button_rect is not None and button_rect.collidepoint(event.pos):
                     pygame.quit()
-                    if action == "simulation":
-                        return {"action": "simulation", "simulation": SimulationManager(), "return_action": "launcher"}
-                    if action == "editor":
+                    if selected_action == "simulation":
+                        return {
+                            "action": "simulation",
+                            "simulation": SimulationManager(),
+                            "return_action": "launcher",
+                        }
+                    if selected_action == "editor":
                         return {"action": "editor", "map_data": None}
-                    if action == "quit":
+                    if selected_action == "quit":
                         return {"action": "quit"}
-                else:
-                    selected = clicked
 
-        window.fill(BG)
-        window.blit(preview, (PANEL_W, TAB_H))
-        _draw_panel(window, title_font, body_font, small_font, selected)
-        _draw_tab_bar(window, tab_font, hovered, selected)
         pygame.display.flip()
         clock.tick(FPS)
