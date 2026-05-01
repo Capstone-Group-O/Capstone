@@ -1,3 +1,4 @@
+# map_editor.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from .config import (
 from .entities import Movable, Wall
 from .map_data import MapData, MovableSpawnData, ZoneData, blank_map
 from .map_runtime import build_runtime_world
-from .map_storage import DEFAULT_MAP_PATH, load_or_create_default_map, save_map_data
+from .map_storage import load_or_create_default_map, save_custom_mission
 from .metrics import Zone
 from .terrain import Barrier, Forest, Water
 
@@ -74,6 +75,18 @@ ACTION_BUTTON_H = 32
 ACTION_BUTTON_GAP = 8
 STATUS_BOX_H = 118
 
+MODAL_BG = (25, 28, 34)
+MODAL_BORDER = (70, 78, 92)
+FIELD_BG = (15, 18, 24)
+FIELD_ACTIVE = (45, 95, 150)
+BTN_BG = (46, 55, 66)
+BTN_HOVER = (63, 74, 88)
+BTN_TEXT = (245, 245, 245)
+ACCENT = (170, 220, 255)
+TEXT = (235, 235, 235)
+MUTED = (180, 180, 180)
+ERROR = (255, 120, 120)
+
 
 @dataclass
 class MapEditorResult:
@@ -95,6 +108,16 @@ class MapEditor:
         self._tool_palette_bottom = 0
         self._action_buttons_bottom = 0
 
+        self.save_dialog_open = False
+        self.save_title = self.map_data.metadata.get("title", self.map_data.name if self.map_data.name != "custom_map" else "")
+        self.save_description = self.map_data.metadata.get("description", "")
+        self.active_field = "title"
+        self.dialog_error = ""
+        self.submit_rect = pygame.Rect(0, 0, 0, 0)
+        self.cancel_rect = pygame.Rect(0, 0, 0, 0)
+        self.title_rect = pygame.Rect(0, 0, 0, 0)
+        self.desc_rect = pygame.Rect(0, 0, 0, 0)
+
     def run(self) -> MapEditorResult:
         pygame.init()
         window = pygame.display.set_mode((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT))
@@ -109,6 +132,14 @@ class MapEditor:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     return MapEditorResult("cancel", self.map_data)
+
+                if self.save_dialog_open:
+                    result = self._handle_save_dialog_event(event)
+                    if result is not None:
+                        pygame.quit()
+                        return result
+                    continue
+
                 if event.type == pygame.KEYDOWN:
                     result = self._handle_keydown(event.key)
                     if result is not None:
@@ -144,13 +175,7 @@ class MapEditor:
             return None
 
         if key == pygame.K_s:
-            self._save_current_map()
-            return None
-
-        if key == pygame.K_l:
-            self.map_data = load_or_create_default_map()
-            self.zone_anchor = None
-            self.status = f"Loaded {DEFAULT_MAP_PATH.name}"
+            self._open_save_dialog()
             return None
 
         if key == pygame.K_n:
@@ -167,6 +192,78 @@ class MapEditor:
 
         return None
 
+    def _open_save_dialog(self):
+        self.save_dialog_open = True
+        self.dialog_error = ""
+        self.active_field = "title"
+        if not self.save_title:
+            self.save_title = self.map_data.metadata.get("title", "")
+        if not self.save_description:
+            self.save_description = self.map_data.metadata.get("description", "")
+
+    def _handle_save_dialog_event(self, event) -> Optional[MapEditorResult]:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.save_dialog_open = False
+                self.dialog_error = ""
+                return None
+            if event.key == pygame.K_TAB:
+                self.active_field = "description" if self.active_field == "title" else "title"
+                return None
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._submit_save_dialog()
+                return None
+            if event.key == pygame.K_BACKSPACE:
+                if self.active_field == "title":
+                    self.save_title = self.save_title[:-1]
+                else:
+                    self.save_description = self.save_description[:-1]
+                self.dialog_error = ""
+                return None
+            if event.unicode and event.unicode.isprintable():
+                if self.active_field == "title":
+                    if len(self.save_title) < 48:
+                        self.save_title += event.unicode
+                else:
+                    candidate = self.save_description + event.unicode
+                    if len(candidate.split()) <= 50 and len(candidate) <= 320:
+                        self.save_description = candidate
+                self.dialog_error = ""
+                return None
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.title_rect.collidepoint(event.pos):
+                self.active_field = "title"
+                return None
+            if self.desc_rect.collidepoint(event.pos):
+                self.active_field = "description"
+                return None
+            if self.submit_rect.collidepoint(event.pos):
+                self._submit_save_dialog()
+                return None
+            if self.cancel_rect.collidepoint(event.pos):
+                self.save_dialog_open = False
+                self.dialog_error = ""
+                return None
+        return None
+
+    def _submit_save_dialog(self):
+        title = self.save_title.strip()
+        description = self.save_description.strip()
+        if not title:
+            self.dialog_error = "Title is required."
+            return
+        if len(description.split()) > 50:
+            self.dialog_error = "Description must be 50 words or fewer."
+            return
+        path = save_custom_mission(self.map_data, title, description)
+        self.map_data.metadata["title"] = title
+        self.map_data.metadata["description"] = " ".join(description.split()[:50])
+        self.map_data.name = title
+        self.status = f"Saved mission: {path.stem}"
+        self.save_dialog_open = False
+        self.dialog_error = ""
+
     def _handle_panel_click(self, mouse_pos: Tuple[int, int]) -> Optional[MapEditorResult]:
         back = pygame.Rect(BACK_BUTTON_RECT)
         if back.collidepoint(mouse_pos):
@@ -182,12 +279,7 @@ class MapEditor:
         for action, rect in self.action_buttons.items():
             if rect.collidepoint(mouse_pos):
                 if action == "save":
-                    self._save_current_map()
-                    return None
-                if action == "load":
-                    self.map_data = load_or_create_default_map()
-                    self.zone_anchor = None
-                    self.status = f"Loaded {DEFAULT_MAP_PATH.name}"
+                    self._open_save_dialog()
                     return None
                 if action == "blank":
                     self.map_data = blank_map()
@@ -197,10 +289,6 @@ class MapEditor:
                 if action == "test":
                     return MapEditorResult("test", self.map_data)
         return None
-
-    def _save_current_map(self):
-        path = save_map_data(self.map_data, DEFAULT_MAP_PATH)
-        self.status = f"Saved map to {path.name}"
 
     def _mouse_to_grid(self, mouse_pos: Tuple[int, int]) -> Optional[Tuple[int, int]]:
         if mouse_pos[0] >= WINDOW_WIDTH:
@@ -301,6 +389,8 @@ class MapEditor:
         self._draw_objective_cells(play_surface, runtime.objective_cells)
         runtime.grid.draw(play_surface)
         self._draw_sidebar(window)
+        if self.save_dialog_open:
+            self._draw_save_dialog(window)
 
     def _draw_zones(self, surface, start_zone: Zone, dest_zone: Zone):
         start_zone.draw(surface)
@@ -373,7 +463,6 @@ class MapEditor:
         button_w = (HUD_PANEL_WIDTH - 36 - ACTION_BUTTON_GAP) // 2
         actions = [
             ("save", "Save"),
-            ("load", "Load"),
             ("blank", "Blank"),
             ("test", "Test"),
         ]
@@ -460,6 +549,72 @@ class MapEditor:
             pygame.draw.line(surface, (245, 245, 245), (3, 3), (CELL_SIZE - 3, CELL_SIZE - 3), 3)
             pygame.draw.line(surface, (245, 245, 245), (CELL_SIZE - 3, 3), (3, CELL_SIZE - 3), 3)
 
+    def _draw_save_dialog(self, window):
+        overlay = pygame.Surface((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        window.blit(overlay, (0, 0))
+
+        box_w = 420
+        box_h = 250
+        box = pygame.Rect(
+            (APP_WINDOW_WIDTH - box_w) // 2,
+            (APP_WINDOW_HEIGHT - box_h) // 2,
+            box_w,
+            box_h,
+        )
+        pygame.draw.rect(window, MODAL_BG, box, border_radius=12)
+        pygame.draw.rect(window, MODAL_BORDER, box, 2, border_radius=12)
+
+        title = self.font.render("Save Custom Mission", True, ACCENT)
+        window.blit(title, (box.x + 16, box.y + 16))
+
+        label_title = self.small_font.render("Title", True, TEXT)
+        window.blit(label_title, (box.x + 16, box.y + 56))
+        self.title_rect = pygame.Rect(box.x + 16, box.y + 78, box.w - 32, 32)
+        pygame.draw.rect(
+            window,
+            FIELD_BG,
+            self.title_rect,
+            border_radius=6,
+        )
+        pygame.draw.rect(
+            window,
+            FIELD_ACTIVE if self.active_field == "title" else MODAL_BORDER,
+            self.title_rect,
+            2,
+            border_radius=6,
+        )
+        title_text = self.small_font.render(self.save_title or "", True, TEXT)
+        window.blit(title_text, (self.title_rect.x + 8, self.title_rect.y + 7))
+
+        label_desc = self.small_font.render("Description (50 words max)", True, TEXT)
+        window.blit(label_desc, (box.x + 16, box.y + 120))
+        self.desc_rect = pygame.Rect(box.x + 16, box.y + 142, box.w - 32, 48)
+        pygame.draw.rect(window, FIELD_BG, self.desc_rect, border_radius=6)
+        pygame.draw.rect(
+            window,
+            FIELD_ACTIVE if self.active_field == "description" else MODAL_BORDER,
+            self.desc_rect,
+            2,
+            border_radius=6,
+        )
+
+        desc_lines = self._wrap_text(self.save_description or "", self.desc_rect.width - 16)
+        yy = self.desc_rect.y + 6
+        for line in desc_lines[:2]:
+            surf = self.tiny_font.render(line, True, TEXT)
+            window.blit(surf, (self.desc_rect.x + 8, yy))
+            yy += surf.get_height() + 2
+
+        if self.dialog_error:
+            err = self.tiny_font.render(self.dialog_error, True, ERROR)
+            window.blit(err, (box.x + 16, box.y + 196))
+
+        self.submit_rect = pygame.Rect(box.right - 200, box.bottom - 42, 88, 28)
+        self.cancel_rect = pygame.Rect(box.right - 100, box.bottom - 42, 84, 28)
+        _draw_modal_button(window, self.small_font, self.submit_rect, "Submit")
+        _draw_modal_button(window, self.small_font, self.cancel_rect, "Cancel")
+
     def _wrap_text(self, text: str, max_width: int):
         words = text.split()
         if not words:
@@ -475,6 +630,14 @@ class MapEditor:
                 current = word
         lines.append(current)
         return lines
+
+
+def _draw_modal_button(window, font, rect, label):
+    hover = rect.collidepoint(pygame.mouse.get_pos())
+    pygame.draw.rect(window, BTN_HOVER if hover else BTN_BG, rect, border_radius=6)
+    pygame.draw.rect(window, MODAL_BORDER, rect, 1, border_radius=6)
+    surf = font.render(label, True, BTN_TEXT)
+    window.blit(surf, surf.get_rect(center=rect.center))
 
 
 def run_map_editor(initial_map: Optional[MapData] = None) -> MapEditorResult:

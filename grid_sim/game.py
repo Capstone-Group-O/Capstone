@@ -29,14 +29,15 @@ def game(simulation=None, return_action="launcher"):
         pygame.display.flip()
         clock.tick(FPS)
 
-    if simulation.requested_action is not None:
-        if simulation.requested_action == "editor":
+    requested = getattr(simulation, "requested_action", None)
+    if requested is not None:
+        if requested == "editor":
             result = {
                 "action": "editor",
                 "map_data": getattr(simulation, "editor_map_data", None),
             }
         else:
-            result = {"action": simulation.requested_action}
+            result = {"action": requested}
 
     pygame.quit()
     return result

@@ -1,45 +1,90 @@
+# map_storage.py
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .map_data import MapData, blank_map
 
-
-MAPS_DIR = Path(__file__).resolve().parent / "maps"
-DEFAULT_MAP_PATH = MAPS_DIR / "custom_map.json"
+MISSIONS_DIR = Path(__file__).resolve().parent / "missions"
 
 
-def ensure_maps_dir() -> Path:
-    MAPS_DIR.mkdir(parents=True, exist_ok=True)
-    return MAPS_DIR
+def ensure_missions_dir() -> Path:
+    MISSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    return MISSIONS_DIR
 
 
-def save_map_data(map_data: MapData, path: Optional[Path] = None) -> Path:
-    ensure_maps_dir()
-    target = path or DEFAULT_MAP_PATH
-    with target.open("w", encoding="utf-8") as fh:
-        json.dump(map_data.to_dict(), fh, indent=2)
-    return target
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
+    return slug or "mission"
 
 
-def load_map_data(path: Optional[Path] = None) -> MapData:
-    target = path or DEFAULT_MAP_PATH
-    with target.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    return MapData.from_dict(data)
-
-
-def list_saved_maps() -> List[Path]:
-    ensure_maps_dir()
-    return sorted(MAPS_DIR.glob("*.json"))
+def _mission_path_from_title(title: str) -> Path:
+    base = _slugify(title)
+    candidate = MISSIONS_DIR / f"{base}.json"
+    counter = 2
+    while candidate.exists():
+        candidate = MISSIONS_DIR / f"{base}_{counter}.json"
+        counter += 1
+    return candidate
 
 
 def load_or_create_default_map() -> MapData:
-    ensure_maps_dir()
-    if DEFAULT_MAP_PATH.exists():
-        return load_map_data(DEFAULT_MAP_PATH)
-    map_data = blank_map()
-    save_map_data(map_data, DEFAULT_MAP_PATH)
-    return map_data
+    ensure_missions_dir()
+    return blank_map()
+
+
+def save_custom_mission(map_data: MapData, title: str, description: str) -> Path:
+    ensure_missions_dir()
+
+    trimmed_title = title.strip() or "Untitled Mission"
+    trimmed_description = " ".join(description.strip().split())
+    words = trimmed_description.split()
+    if len(words) > 50:
+        trimmed_description = " ".join(words[:50])
+
+    payload = map_data.to_dict()
+    payload["name"] = trimmed_title
+    payload["metadata"] = dict(payload.get("metadata", {}))
+    payload["metadata"]["title"] = trimmed_title
+    payload["metadata"]["description"] = trimmed_description
+
+    target = _mission_path_from_title(trimmed_title)
+    with target.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
+
+    return target
+
+
+def list_custom_missions() -> List[Dict[str, object]]:
+    ensure_missions_dir()
+    missions: List[Dict[str, object]] = []
+
+    for path in sorted(MISSIONS_DIR.glob("*.json")):
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception:
+            continue
+
+        metadata = dict(data.get("metadata", {}))
+        title = metadata.get("title") or data.get("name") or path.stem
+        description = metadata.get("description") or "No description provided."
+
+        missions.append(
+            {
+                "title": title,
+                "description": description,
+                "path": path,
+            }
+        )
+
+    return missions
+
+
+def load_custom_mission(path: Path) -> MapData:
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return MapData.from_dict(data)

@@ -1,4 +1,3 @@
-# __main__.py
 from .game import game
 from .launcher import launch
 from .map_editor import run_map_editor
