@@ -1,3 +1,4 @@
+# __main__.py
 from .game import game
 from .launcher import launch
 from .map_editor import run_map_editor
@@ -12,7 +13,7 @@ def main():
         action = next_action.get("action")
 
         if action == "launcher":
-            next_action = launch()
+            next_action = launch(editor_map)
             continue
 
         if action == "simulation":
