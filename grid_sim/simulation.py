@@ -13,6 +13,7 @@ from .map_data import MapData, MovableSpawnData, ZoneData
 from .map_runtime import build_runtime_world
 from .metrics import Zone, random_entity_metrics
 from .phases import PHASE_FINISHED, PHASE_MOVING, PHASE_PLANNING
+from .sim_export import export_sim_results
 from .stats import SimStats
 
 
@@ -51,6 +52,7 @@ class SimulationManager:
         self.requested_action: Optional[str] = None
         self.back_target = "launcher"
         self.editor_map_data: Optional[MapData] = None
+        self._last_export_path: Optional[str] = None
 
         if map_data is None:
             self._build_random_world()
@@ -289,6 +291,7 @@ class SimulationManager:
             self.stats.finalize()
             self.phase = PHASE_FINISHED
             self.paused = True
+            self._last_export_path = export_sim_results(self)
 
     def _update_proximity(self, movable: Movable):
         for other in self.movables:
