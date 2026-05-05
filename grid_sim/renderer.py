@@ -40,7 +40,7 @@ class SimulationRenderer:
             self._draw_proximity_overlays(simulation, play_surface)
 
         if simulation.phase == PHASE_FINISHED:
-            simulation.stats.draw(play_surface, self.font)
+            simulation.stats.draw(play_surface, self.font, getattr(simulation, "_last_export_path", None))
 
         self._draw_sidebar_background()
         self._draw_hud(simulation)

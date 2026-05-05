@@ -61,7 +61,7 @@ class SimStats:
             else:
                 d["efficiency"] = 0.0
 
-    def draw(self, window, font):
+    def draw(self, window, font, export_path: str = None):
         """Renders the summary screen overlay."""
         if not self._data:
             return
@@ -174,6 +174,11 @@ class SimStats:
         hint = font.render("R = reset  |  Enter = run again", True, (100, 100, 130))
         hint_rect = hint.get_rect(centerx=WINDOW_WIDTH // 2, y=WINDOW_HEIGHT - 28)
         window.blit(hint, hint_rect)
+
+        if export_path:
+            export_surf = font.render(f"Saved: {export_path}", True, (80, 160, 100))
+            export_rect = export_surf.get_rect(centerx=WINDOW_WIDTH // 2, y=WINDOW_HEIGHT - 46)
+            window.blit(export_surf, export_rect)
 
     def _draw_stat(self, window, font, name, value, x, y):
         name_surf = font.render(f"{name}:", True, (140, 140, 170))
