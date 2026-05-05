@@ -17,30 +17,84 @@ from .config import (
     PANEL_TEXT_COLOR,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
+    WORLD_HEIGHT,
+    WORLD_WIDTH,
 )
 from .phases import PHASE_FINISHED, PHASE_MOVING, PHASE_PLANNING
+
+ZOOM_MIN = 0.3
+ZOOM_MAX = 4.0
+ZOOM_STEP = 0.1
+
+
+class Camera:
+    def __init__(self):
+        self.zoom = 1.0
+        self.x = 0.0
+        self.y = 0.0
+        self.panning = False
+        self._pan_start = (0, 0)
+        self._cam_start = (0.0, 0.0)
+
+    def screen_to_world(self, sx, sy):
+        return (sx - self.x) / self.zoom, (sy - self.y) / self.zoom
+
+    def handle_zoom(self, scroll_y, mouse_pos):
+        old_zoom = self.zoom
+        self.zoom = max(ZOOM_MIN, min(ZOOM_MAX, self.zoom + scroll_y * ZOOM_STEP))
+        mx, my = mouse_pos
+        self.x = mx - (mx - self.x) * (self.zoom / old_zoom)
+        self.y = my - (my - self.y) * (self.zoom / old_zoom)
+
+    def start_pan(self, mouse_pos):
+        self.panning = True
+        self._pan_start = mouse_pos
+        self._cam_start = (self.x, self.y)
+
+    def stop_pan(self):
+        self.panning = False
+
+    def update_pan(self, mouse_pos):
+        if not self.panning:
+            return
+        dx = mouse_pos[0] - self._pan_start[0]
+        dy = mouse_pos[1] - self._pan_start[1]
+        self.x = self._cam_start[0] + dx
+        self.y = self._cam_start[1] + dy
 
 
 class SimulationRenderer:
     def __init__(self, window):
         self.window = window
+        self.camera = Camera()
+        self._world_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
         self.font = pygame.font.Font(None, 26)
         self.small_font = pygame.font.Font(None, 22)
 
     def render(self, simulation):
         self.window.fill(PANEL_BG_COLOR)
-        play_surface = self.window.subsurface(pygame.Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT))
-        play_surface.fill(BG_COLOR)
 
-        self._draw_zones(simulation, play_surface)
-        self._draw_objective_cells(simulation, play_surface)
-        simulation.grid.draw(play_surface)
+        # Draw world content onto off-screen surface at native resolution
+        self._world_surface.fill(BG_COLOR)
+        self._draw_zones(simulation, self._world_surface)
+        self._draw_objective_cells(simulation, self._world_surface)
+        simulation.grid.draw(self._world_surface)
 
         if simulation.phase == PHASE_MOVING:
-            self._draw_proximity_overlays(simulation, play_surface)
+            self._draw_proximity_overlays(simulation, self._world_surface)
 
         if simulation.phase == PHASE_FINISHED:
-            simulation.stats.draw(play_surface, self.font)
+            simulation.stats.draw(self._world_surface, self.font)
+
+        # Scale world surface and blit onto play area with camera transform
+        cam = self.camera
+        scaled_w = max(1, int(WORLD_WIDTH * cam.zoom))
+        scaled_h = max(1, int(WORLD_HEIGHT * cam.zoom))
+        scaled = pygame.transform.smoothscale(self._world_surface, (scaled_w, scaled_h))
+        play_rect = pygame.Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.window.set_clip(play_rect)
+        self.window.blit(scaled, (int(cam.x), int(cam.y)))
+        self.window.set_clip(None)
 
         self._draw_sidebar_background()
         self._draw_hud(simulation)
@@ -114,6 +168,7 @@ class SimulationRenderer:
             "Backspace: undo   C: clear",
             "Enter: start   Space: pause",
             "R: reset   G: regenerate map",
+            "Scroll: zoom   Right-drag: pan",
             "Use the Back button below to return.",
         ]
 
@@ -141,6 +196,7 @@ class SimulationRenderer:
             f"Sim tick: {simulation.timing.simulation_tick_fps} Hz",
             f"Fire tick: {simulation.timing.fire_tick_ms} ms",
             "Space: pause   R: reset",
+            "Scroll: zoom   Right-drag: pan",
             "Use the Back button below to return.",
         ]
 

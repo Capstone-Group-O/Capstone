@@ -10,15 +10,15 @@ from .simulation import SimulationManager
 def game(simulation=None, return_action="launcher"):
     pygame.init()
 
-    window = pygame.display.set_mode((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT))
+    window = pygame.display.set_mode((APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Test Sim")
 
     clock = pygame.time.Clock()
     if simulation is None:
         simulation = SimulationManager()
     simulation.back_target = return_action
-    input_handler = InputHandler(simulation)
     renderer = SimulationRenderer(window)
+    input_handler = InputHandler(simulation, renderer.camera)
 
     result = {"action": return_action}
 
