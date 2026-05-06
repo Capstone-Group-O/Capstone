@@ -15,6 +15,7 @@ from .metrics import Zone, random_entity_metrics
 from .phases import PHASE_FINISHED, PHASE_MOVING, PHASE_PLANNING
 from .sim_export import export_sim_results
 from .stats import SimStats
+from .config import GRID_WIDTH, GRID_HEIGHT
 
 
 @dataclass(frozen=True)
@@ -37,8 +38,7 @@ class SimulationManager:
         self.paused = False
         self.running = True
 
-        self.start_zone = Zone("Start", x=1, y=1, width=4, height=4, color=(40, 80, 120))
-        self.dest_zone = Zone("Objective", x=24, y=24, width=4, height=4, color=(80, 120, 40))
+        self._randomize_zones()
 
         self.movables: List[Movable] = []
         self.objective_cells: List[Tuple[int, int]] = []
@@ -147,10 +147,22 @@ class SimulationManager:
 
     def _spawn_movables(self, count: int = 2):
         occupied = set()
+        
         for _ in range(count):
             sx, sy = self.start_zone.random_point()
             while (sx, sy) in occupied or self.grid.is_blocked(sx, sy):
                 sx, sy = self.start_zone.random_point()
+
+                if (sx, sy) in occupied:
+                    continue
+                if self.grid.is_blocked(sx, sy):
+                    continue
+                if self.grid.is_fire(sx, sy):
+                    continue
+                if self.grid.is_adjacent_to_fire(sx, sy):
+                    continue
+
+                break
 
             movable = Movable((0, 0, 255), sx, sy)
             self.movables.append(movable)
@@ -208,11 +220,25 @@ class SimulationManager:
         self._simulation_accumulator_ms = 0.0
         self._last_fire_spread_time_ms = 0
 
-        for movable in self.movables:
-            movable.reset_to_start(self.grid)
+        # Clear everything
+        self.grid = Grid()
+        self.movables.clear()
+        self.objective_cells.clear()
+        self.initial_fire_positions.clear()
 
-        self._assign_objectives_and_metrics(randomize_metrics=True)
-        self.restore_initial_fire()
+        # Rebuild world with new random zones
+        self._randomize_zones()
+        self._build_world()
+
+    def regenerate_map(self):
+        if self.phase != PHASE_PLANNING:
+            return
+        self.phase = PHASE_PLANNING
+        self.paused = False
+        self.stats.reset()
+        self._simulation_accumulator_ms = 0.0
+        self._last_fire_spread_time_ms = 0
+        self._build_random_world()
 
     def regenerate_map(self):
         if self.phase != PHASE_PLANNING:
@@ -329,3 +355,29 @@ class SimulationManager:
     def plan_selected_step(self, dx: int, dy: int):
         for movable in self.selected_movables():
             movable.plan_step(dx, dy, self.grid)
+
+    def _randomize_zones(self, zone_size=4, max_attempts=200):
+        min_distance = (GRID_WIDTH + GRID_HEIGHT) // 2
+
+        for _ in range(max_attempts):
+            sx = random.randint(0, GRID_WIDTH - zone_size)
+            sy = random.randint(0, GRID_HEIGHT - zone_size)
+
+            dx = random.randint(0, GRID_WIDTH - zone_size)
+            dy = random.randint(0, GRID_HEIGHT - zone_size)
+
+            start_center = (sx + zone_size // 2, sy + zone_size // 2)
+            dest_center = (dx + zone_size // 2, dy + zone_size // 2)
+
+            dist = abs(start_center[0] - dest_center[0]) + abs(start_center[1] - dest_center[1])
+
+            if dist < min_distance:
+                continue
+
+            self.start_zone = Zone("Start", sx, sy, zone_size, zone_size, (40, 80, 120))
+            self.dest_zone = Zone("Objective", dx, dy, zone_size, zone_size, (80, 120, 40))
+            return
+
+        raise RuntimeError("Failed to generate valid zones")
+    
+    
