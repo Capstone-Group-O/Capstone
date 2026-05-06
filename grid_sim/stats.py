@@ -61,7 +61,7 @@ class SimStats:
             else:
                 d["efficiency"] = 0.0
 
-    def draw(self, window, font):
+    def draw(self, window, font, export_path: str = None):
         """Renders the summary screen overlay."""
         if not self._data:
             return
@@ -162,6 +162,11 @@ class SimStats:
                 fill_w = int(bar_w * (m.fuel_pct / 100.0))
                 fuel_color = (90, 220, 140) if m.fuel_pct > 50 else (255, 220, 120) if m.fuel_pct > 25 else (240, 120, 120)
                 pygame.draw.rect(window, fuel_color, (bar_x, bar_y, fill_w, bar_h), border_radius=3)
+
+                # Out-of-fuel indicator
+                if m.ran_out_of_fuel:
+                    oof_surf = stat_font.render("OUT OF FUEL", True, (240, 120, 120))
+                    window.blit(oof_surf, (bar_x, bar_y + bar_h + 6))
             else:
                 self._draw_stat(window, stat_font, "Metrics", "N/A", col3_x, row_y)
 
@@ -169,6 +174,11 @@ class SimStats:
         hint = font.render("R = reset  |  Enter = run again", True, (100, 100, 130))
         hint_rect = hint.get_rect(centerx=WINDOW_WIDTH // 2, y=WINDOW_HEIGHT - 28)
         window.blit(hint, hint_rect)
+
+        if export_path:
+            export_surf = font.render(f"Saved: {export_path}", True, (80, 160, 100))
+            export_rect = export_surf.get_rect(centerx=WINDOW_WIDTH // 2, y=WINDOW_HEIGHT - 46)
+            window.blit(export_surf, export_rect)
 
     def _draw_stat(self, window, font, name, value, x, y):
         name_surf = font.render(f"{name}:", True, (140, 140, 170))
